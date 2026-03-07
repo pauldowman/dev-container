@@ -31,7 +31,11 @@ else
   workdir="/workspace"
 fi
 
-docker exec -it \
+# Only allocate a TTY when stdin is a terminal (not in git hooks, CI, etc.)
+tty_flag=""
+[ -t 0 ] && tty_flag="-t"
+
+docker exec -i $tty_flag \
   -w "$workdir" \
   -e "GH_TOKEN=$(gh auth token)" \
   dev-agent zsh -l -i -c "$cmd \"\$@\"" -- "$@"
