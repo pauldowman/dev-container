@@ -4,19 +4,9 @@ This is a container for running claude code and codex safely. It has some opinio
 
 ## Setup
 
-1. Build and start the container:
+The script will build and run the containe the first time.
 
-   ```bash
-   ./safe-agent
-   ```
-
-2. Log in to Claude (first time, or after rebuild):
-   ```bash
-   ./safe-agent shell
-   claude login
-   ```
-
-`~/.claude` and `~/.claude.json` aren't shared with the host so that they don't conflict
+You will need to log in with claude or codex after rebuilding the container because `~/.claude` and `~/.claude.json` aren't shared with the host so that they don't conflict with the dotfiles that are installed.
 
 ## Usage
 
