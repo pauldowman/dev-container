@@ -5,12 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Parse tool argument (default: claude)
 tool="${1:-claude}"
+shift || true
 case "$tool" in
 claude) cmd='~/.local/bin/claude' ;;
 codex) cmd='/usr/bin/codex' ;;
 shell) cmd='zsh' ;;
 *)
-  echo "Usage: $0 [claude|codex|shell]" >&2
+  echo "Usage: $0 [claude|codex|shell] [args...]" >&2
   exit 1
   ;;
 esac
@@ -33,4 +34,4 @@ fi
 docker exec -it \
   -w "$workdir" \
   -e "GH_TOKEN=$(gh auth token)" \
-  dev-agent zsh -l -i -c "$cmd"
+  dev-agent zsh -l -i -c "$cmd \"\$@\"" -- "$@"
