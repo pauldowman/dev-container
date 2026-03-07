@@ -7,12 +7,12 @@ This is a container for running claude code and codex safely. It has some opinio
 1. Build and start the container:
 
    ```bash
-   ./agent
+   ./safe-agent
    ```
 
 2. Log in to Claude (first time, or after rebuild):
    ```bash
-   ./agent shell
+   ./safe-agent shell
    claude login
    ```
 
@@ -21,16 +21,16 @@ This is a container for running claude code and codex safely. It has some opinio
 ## Usage
 
 ```bash
-./agent           # runs Claude (default)
-./agent claude    # runs Claude
-./agent codex     # runs Codex
-./agent shell     # runs zsh
+./safe-agent           # runs Claude (default)
+./safe-agent claude    # runs Claude
+./safe-agent codex     # runs Codex
+./safe-agent shell     # runs zsh
 ```
 
 Add to your PATH for convenience:
 
 ```bash
-ln -s $(pwd)/agent /usr/local/bin/agent
+ln -s $(pwd)/safe-agent /usr/local/bin/safe-agent
 ```
 
 The script:
@@ -79,7 +79,7 @@ Dotfiles are installed from https://github.com/pauldowman/dotfiles.git
 ```bash
 docker compose down
 docker compose build --no-cache
-./agent
+./safe-agent
 ```
 
 Remember to run `claude login` after rebuilding.
