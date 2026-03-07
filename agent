@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Parse tool argument (default: claude)
+tool="${1:-claude}"
+case "$tool" in
+claude) cmd='~/.local/bin/claude' ;;
+codex) cmd='/usr/bin/codex' ;;
+shell) cmd='zsh' ;;
+*)
+  echo "Usage: $0 [claude|codex|shell]" >&2
+  exit 1
+  ;;
+esac
+
+# Start container if not running
+if ! docker ps --format '{{.Names}}' | grep -q '^dev-agent$'; then
+  echo "Starting dev-agent container..."
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
+fi
+
+# Determine working directory inside container
+full=$(pwd)
+base=/Users/paul/code
+if [[ "$full" == "$base/"* ]]; then
+  workdir="/workspace/${full#$base/}"
+else
+  workdir="/workspace"
+fi
+
+docker exec -it \
+  -w "$workdir" \
+  -e "GH_TOKEN=$(gh auth token)" \
+  dev-agent zsh -l -i -c "$cmd"
