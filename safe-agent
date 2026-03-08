@@ -8,7 +8,7 @@ tool="${1:-claude}"
 shift || true
 case "$tool" in
 claude) cmd='~/.local/bin/claude' ;;
-codex) cmd='/usr/bin/codex' ;;
+codex) cmd='/usr/local/bin/codex' ;;
 shell) cmd='zsh' ;;
 *)
   echo "Usage: $0 [claude|codex|shell] [args...]" >&2
