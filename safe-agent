@@ -32,6 +32,11 @@ docker run -i $tty_flag \
   -v "${HOME}/.claude.json:/home/${USER}/.claude.json" \
   -v "${HOME}/.codex:/home/${USER}/.codex" \
   -v "${SCRIPT_DIR}/data/certs:/usr/local/share/ca-certificates/extra:ro" \
+  -v "${SCRIPT_DIR}/data/caches/cargo-registry:/usr/local/cargo/registry" \
+  -v "${SCRIPT_DIR}/data/caches/cargo-git:/usr/local/cargo/git" \
+  -v "${SCRIPT_DIR}/data/caches/go-mod:/home/${USER}/go/pkg/mod" \
+  -v "${SCRIPT_DIR}/data/caches/home-cache:/home/${USER}/.cache" \
+  -v "${SCRIPT_DIR}/data/caches/npm:/home/${USER}/.npm" \
   -v "/run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock" \
   -v "${HOME}/.ssh/id_signing.pub:/home/${USER}/.ssh/id_signing.pub:ro" \
   -e "SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock" \
