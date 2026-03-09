@@ -1,4 +1,5 @@
 # Dev Agent Container
+
 This is a container for running claude code and codex safely. It has some opinionated and hardcoded things for me specifically.
 
 ## Setup
@@ -60,7 +61,7 @@ The container does not use `--dangerously-skip-permissions`. Instead, configure 
       "Write",
       "NotebookEdit",
       "Mcp:*",
-      "Fetch(*)",
+      "WebFetch",
       "WebSearch"
     ],
     "deny": [
