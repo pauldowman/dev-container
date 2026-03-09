@@ -1,12 +1,15 @@
 # Dev Agent Container
-
 This is a container for running claude code and codex safely. It has some opinionated and hardcoded things for me specifically.
 
 ## Setup
 
-The script will build and run the containe the first time.
+Build the image:
 
-You will need to log in with claude or codex after rebuilding the container because `~/.claude` and `~/.claude.json` aren't shared with the host so that they don't conflict with the dotfiles that are installed.
+```bash
+./build
+```
+
+The build script creates the image with your username and home directory code path baked in as build-time arguments.
 
 ## Usage
 
@@ -25,18 +28,50 @@ ln -s $(pwd)/safe-agent /usr/local/bin/safe-agent
 
 The script:
 
-- Automatically builds and starts the container if not running
-- Sets the working directory to match your current directory (if under `/Users/paul/code`)
+- Runs a fresh ephemeral container each invocation (`docker run`, not `docker exec`)
+- Sets the working directory to match your current directory
+- Mounts `~/.claude` and `~/.claude.json` from the host (no login needed after rebuild)
 - Forwards your GitHub token for git operations
-- Provides SSH agent access for commit signing
+- Provides SSH agent access for commit signing (automatically runs `ssh-add` for `~/.ssh/id_signing`)
 
 ## Directory Mapping
 
 | Host                    | Container               |
 | ----------------------- | ----------------------- |
-| `/Users/paul/code`      | `/workspace`            |
+| `~/code`                | `~/code` (same path)    |
+| `~/.claude`             | `~/.claude`             |
+| `~/.claude.json`        | `~/.claude.json`        |
+| `~/.codex`              | `~/.codex`              |
 | `~/.ssh/id_signing.pub` | `~/.ssh/id_signing.pub` |
 | `./data/certs/*.crt`    | Custom CA certificates  |
+
+## Claude Permissions
+
+The container does not use `--dangerously-skip-permissions`. Instead, configure permissions via `~/.claude/settings.json` on the host (it's mounted into the container). For example:
+
+```json
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(*)",
+      "Read",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Mcp:*",
+      "Fetch(*)",
+      "WebSearch"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)"
+    ]
+  },
+  "hooks": {}
+}
+```
 
 ## Git Commit Signing
 
@@ -67,9 +102,7 @@ Dotfiles are installed from https://github.com/pauldowman/dotfiles.git
 ## Rebuilding
 
 ```bash
-docker compose down
-docker compose build --no-cache
-./safe-agent
+./build
 ```
 
-Remember to run `claude login` after rebuilding.
+Since `~/.claude` is mounted from the host, no re-login is needed after rebuilding.
