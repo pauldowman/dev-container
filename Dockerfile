@@ -38,7 +38,10 @@ COPY --from=foundry /usr/local/bin/anvil /usr/local/bin/
 COPY --from=foundry /usr/local/bin/chisel /usr/local/bin/
 
 # Install global npm packages (now that node is available)
-RUN npm install -g typescript typescript-language-server @openai/codex@latest
+RUN npm install -g typescript typescript-language-server @openai/codex@latest \
+    pyright \
+    @nomicfoundation/solidity-language-server \
+    bash-language-server
 
 # Install rust-analyzer
 RUN rustup component add rust-analyzer clippy
