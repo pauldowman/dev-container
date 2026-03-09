@@ -16,12 +16,6 @@ shell) cmd='zsh' ;;
   ;;
 esac
 
-# Start container if not running
-if ! docker ps --format '{{.Names}}' | grep -q '^dev-agent$'; then
-  echo "Starting dev-agent container..."
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
-fi
-
 path=$(pwd)
 
 # Only allocate a TTY when stdin is a terminal (not in git hooks, CI, etc.)
@@ -29,7 +23,15 @@ tty_flag=""
 [ -t 0 ] && tty_flag="-t"
 
 export DOCKER_CLI_HINTS=false
-docker exec -i $tty_flag \
+docker run -i $tty_flag \
   -w "$path" \
+  -v "${HOME}/code:${HOME}/code" \
+  -v "${HOME}/.claude:/home/${USER}/.claude" \
+  -v "${HOME}/.claude.json:/home/${USER}/.claude.json" \
+  -v "${HOME}/.codex:/home/${USER}/.codex" \
+  -v "${SCRIPT_DIR}/data/certs:/usr/local/share/ca-certificates/extra:ro" \
+  -v "/run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock" \
+  -v "${HOME}/.ssh/id_signing.pub:/home/${USER}/.ssh/id_signing.pub:ro" \
+  -e "SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock" \
   -e "GH_TOKEN=$(gh auth token)" \
   dev-agent zsh -l -i -c "$cmd \"\$@\"" -- "$@"

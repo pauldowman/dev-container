@@ -68,3 +68,6 @@ RUN go install golang.org/x/tools/gopls@latest
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
+COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

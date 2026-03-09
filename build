@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+mkdir -p "${SCRIPT_DIR}/data/certs"
+
+docker build \
+  --build-arg USERNAME="${USER}" \
+  --build-arg CODE_PATH="${HOME}/code" \
+  -t dev-agent \
+  "${SCRIPT_DIR}"
