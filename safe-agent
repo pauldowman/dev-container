@@ -18,6 +18,8 @@ esac
 
 path=$(pwd)
 
+ssh-add "${HOME}/.ssh/id_signing" >/dev/null 2>&1
+
 # Only allocate a TTY when stdin is a terminal (not in git hooks, CI, etc.)
 tty_flag=""
 [ -t 0 ] && tty_flag="-t"
