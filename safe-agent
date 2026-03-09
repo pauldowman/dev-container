@@ -22,14 +22,7 @@ if ! docker ps --format '{{.Names}}' | grep -q '^dev-agent$'; then
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
 fi
 
-# Determine working directory inside container
-full=$(pwd)
-base=/Users/paul/code
-if [[ "$full" == "$base/"* ]]; then
-  workdir="/workspace/${full#$base/}"
-else
-  workdir="/workspace"
-fi
+path=$(pwd)
 
 # Only allocate a TTY when stdin is a terminal (not in git hooks, CI, etc.)
 tty_flag=""
@@ -37,6 +30,6 @@ tty_flag=""
 
 export DOCKER_CLI_HINTS=false
 docker exec -i $tty_flag \
-  -w "$workdir" \
+  -w "$path" \
   -e "GH_TOKEN=$(gh auth token)" \
   dev-agent zsh -l -i -c "$cmd \"\$@\"" -- "$@"

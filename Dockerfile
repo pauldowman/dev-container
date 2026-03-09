@@ -43,17 +43,20 @@ RUN npm install -g typescript typescript-language-server @openai/codex@latest
 # Install rust-analyzer
 RUN rustup component add rust-analyzer clippy
 
-ARG USERNAME=paul
+ARG USERNAME
 RUN useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+ARG CODE_PATH
+RUN mkdir -p $CODE_PATH
+RUN chown $USERNAME $CODE_PATH
 
 # Fix ownership of rust/cargo dirs for user
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
 
-RUN ln -s /home /Users
+WORKDIR $CODE_PATH
 
 USER $USERNAME
-WORKDIR /home/$USERNAME
 
 # Install dotfiles
 RUN git clone https://github.com/pauldowman/dotfiles.git ~/dotfiles && \
@@ -65,4 +68,3 @@ RUN go install golang.org/x/tools/gopls@latest
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-WORKDIR /workspace
