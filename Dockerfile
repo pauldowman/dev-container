@@ -9,9 +9,14 @@ RUN apt-get update && apt-get install -y \
     git curl sudo zsh fzf ripgrep tmux \
     iproute2 dnsutils \
     openssh-client jq vim gh gpg python3.12-venv \
-    ca-certificates \
+    ca-certificates locales \
+    && locale-gen en_US.UTF-8 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /var/tmp/*
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
 # Copy Go
 COPY --from=golang /usr/local/go /usr/local/go
