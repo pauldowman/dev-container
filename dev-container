@@ -1,0 +1,25 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+host_path=$(pwd)
+path="/workspace/code/${host_path#${HOME}/code/}"
+
+ssh-add "${HOME}/.ssh/id_signing" >/dev/null 2>&1 || true
+
+# Start container if not running
+if ! docker ps --format '{{.Names}}' | grep -q '^dev-container$'; then
+  echo "Starting dev-container container..."
+  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+fi
+
+# Only allocate a TTY when stdin is a terminal (not in git hooks, CI, etc.)
+tty_flag=""
+[ -t 0 ] && tty_flag="-t"
+
+export DOCKER_CLI_HINTS=false
+docker exec -i $tty_flag \
+  -w "$path" \
+  -e "GH_TOKEN=$(gh auth token)" \
+  dev-container zsh -l

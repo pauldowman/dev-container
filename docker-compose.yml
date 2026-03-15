@@ -1,0 +1,16 @@
+services:
+  dev-container:
+    container_name: dev-container
+    build:
+      context: .
+      args:
+        USERNAME: ${USER}
+    volumes:
+      - ${HOME}/code:/workspace/code
+      - ${HOME}/.ssh/id_signing.pub:/home/${USER}/.ssh/id_signing.pub:ro
+      - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+      - ./data/certs:/usr/local/share/ca-certificates/extra:ro
+    environment:
+      - SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+    command: sh -c "sudo chmod 777 /run/host-services/ssh-auth.sock && sudo update-ca-certificates >/dev/null && sleep infinity"
+    restart: always

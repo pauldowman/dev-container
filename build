@@ -3,15 +3,5 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-mkdir -p "${SCRIPT_DIR}/data/certs"
-mkdir -p "${SCRIPT_DIR}/data/caches/cargo-registry"
-mkdir -p "${SCRIPT_DIR}/data/caches/cargo-git"
-mkdir -p "${SCRIPT_DIR}/data/caches/go-mod"
-mkdir -p "${SCRIPT_DIR}/data/caches/home-cache"
-mkdir -p "${SCRIPT_DIR}/data/caches/npm"
-
-docker build \
-  --build-arg USERNAME="${USER}" \
-  --build-arg CODE_PATH="${HOME}/code" \
-  -t dev-agent \
-  "${SCRIPT_DIR}"
+docker compose -f "${SCRIPT_DIR}/docker-compose.yml" down
+docker compose -f "${SCRIPT_DIR}/docker-compose.yml" build "$@"

@@ -50,14 +50,12 @@ ARG USERNAME
 RUN useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-ARG CODE_PATH
-RUN mkdir -p $CODE_PATH
-RUN chown $USERNAME $CODE_PATH
+RUN mkdir -p /workspace/code && chown -R $USERNAME /workspace
 
 # Fix ownership of rust/cargo dirs for user
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
 
-WORKDIR $CODE_PATH
+WORKDIR /workspace
 
 USER $USERNAME
 
@@ -70,7 +68,3 @@ RUN go install golang.org/x/tools/gopls@latest
 
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
-
-COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
-
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
