@@ -6,7 +6,7 @@ FROM node:22-bookworm AS node
 FROM ubuntu:latest
 
 RUN apt-get update && apt-get install -y \
-    git curl sudo zsh fzf ripgrep \
+    git curl sudo zsh fzf ripgrep tmux \
     iproute2 dnsutils \
     openssh-client jq vim gh gpg python3.12-venv \
     ca-certificates \
