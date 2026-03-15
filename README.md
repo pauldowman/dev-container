@@ -37,13 +37,13 @@ dev projectname
 dev subdir/projectname
 ```
 
-The working directory inside the container is `/workspace/code/<session-name>`.
+The working directory inside the container is `~/code/<session-name>`.
 
 ## Directory Mapping
 
-| Host     | Container         |
-| -------- | ----------------- |
-| `~/code` | `/workspace/code` |
+| Host     | Container  |
+| -------- | ---------- |
+| `~/code` | `~/code`   |
 
 ## Pre-installed Tools
 

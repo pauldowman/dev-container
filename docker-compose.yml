@@ -9,7 +9,7 @@ services:
     ports:
       - "2222:22"
     volumes:
-      - ${HOME}/code:/workspace/code
+      - ${HOME}/code:/home/${USER}/code
       - ${HOME}/.ssh/id_signing.pub:/tmp/id_signing.pub:ro
       - ./data/certs:/usr/local/share/ca-certificates/extra:ro
     command: >

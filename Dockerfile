@@ -60,12 +60,8 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-RUN mkdir -p /workspace/code && chown -R $USERNAME /workspace
-
 # Fix ownership of rust/cargo dirs for user
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
-
-WORKDIR /workspace
 
 USER $USERNAME
 
