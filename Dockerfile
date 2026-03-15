@@ -8,11 +8,15 @@ FROM ubuntu:latest
 RUN apt-get update && apt-get install -y \
     git curl sudo zsh fzf ripgrep tmux \
     iproute2 dnsutils \
-    openssh-client jq vim gh gpg python3.12-venv \
+    openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales \
     && locale-gen en_US.UTF-8 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /var/tmp/*
+
+RUN ssh-keygen -A && \
+    echo "PasswordAuthentication no\nAllowAgentForwarding yes" \
+    > /etc/ssh/sshd_config.d/container.conf
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \

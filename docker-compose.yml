@@ -1,16 +1,23 @@
 services:
   dev-container:
     container_name: dev-container
+    hostname: dev-container
     build:
       context: .
       args:
         USERNAME: ${USER}
+    ports:
+      - "2222:22"
     volumes:
       - ${HOME}/code:/workspace/code
-      - ${HOME}/.ssh/id_signing.pub:/home/${USER}/.ssh/id_signing.pub:ro
-      - /run/host-services/ssh-auth.sock:/run/host-services/ssh-auth.sock
+      - ${HOME}/.ssh/id_signing.pub:/tmp/id_signing.pub:ro
       - ./data/certs:/usr/local/share/ca-certificates/extra:ro
-    environment:
-      - SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
-    command: sh -c "sudo chmod 777 /run/host-services/ssh-auth.sock && sudo update-ca-certificates >/dev/null && sleep infinity"
+    command: >
+      sh -c "mkdir -p ~/.ssh &&
+             cp /tmp/id_signing.pub ~/.ssh/authorized_keys &&
+             cp /tmp/id_signing.pub ~/.ssh/id_signing.pub &&
+             chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys &&
+             sudo mkdir -p /run/sshd &&
+             sudo update-ca-certificates >/dev/null &&
+             sudo /usr/sbin/sshd -D"
     restart: always
