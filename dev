@@ -21,11 +21,6 @@ EOF
     ;;
 esac
 
-# If not on the local dev machine, SSH to it
-if [ ! -f "$HOME/code/.edit-locally" ]; then
-  exec ssh -t dev "$(printf '%q' "$SCRIPT_DIR/dev") $(printf '%q' "$1")"
-fi
-
 ssh-add "${HOME}/.ssh/id_signing" >/dev/null 2>&1 || true
 
 # Start container if not running
