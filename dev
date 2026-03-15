@@ -3,6 +3,29 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+case "${1:-}" in
+  --init)
+    cat <<'EOF'
+_dev() {
+  _alternative \
+    'args:subcommand:(list)' \
+    'dirs:directory:_path_files -/ -W $HOME/code'
+}
+compdef _dev dev
+EOF
+    exit 0
+    ;;
+  "")
+    echo "Usage: dev <session-name> | dev list" >&2
+    exit 1
+    ;;
+esac
+
+# If not on the local dev machine, SSH to it
+if [ ! -f "$HOME/code/.edit-locally" ]; then
+  exec ssh -t dev "$(printf '%q' "$SCRIPT_DIR/dev") $(printf '%q' "$1")"
+fi
+
 ssh-add "${HOME}/.ssh/id_signing" >/dev/null 2>&1 || true
 
 # Start container if not running
@@ -17,13 +40,9 @@ tty_flag=""
 
 export DOCKER_CLI_HINTS=false
 
-case "${1:-}" in
+case "$1" in
   list)
     docker exec -i $tty_flag dev-container tmux list-sessions
-    ;;
-  "")
-    echo "Usage: dev-container <session-name> | dev-container list" >&2
-    exit 1
     ;;
   *)
     session_name="${1//\//-}"

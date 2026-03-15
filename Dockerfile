@@ -47,7 +47,8 @@ RUN npm install -g typescript typescript-language-server @openai/codex@latest \
 RUN rustup component add rust-analyzer clippy
 
 ARG USERNAME
-RUN useradd -ms /bin/zsh $USERNAME && \
+RUN userdel -r ubuntu 2>/dev/null || true && \
+    useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 RUN mkdir -p /workspace/code && chown -R $USERNAME /workspace
