@@ -10,7 +10,12 @@ RUN apt-get update && apt-get install -y \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales \
+    just make build-essential direnv bat btop \
     && locale-gen en_US.UTF-8 \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" > /etc/apt/sources.list.d/charm.list \
+    && apt-get update && apt-get install -y glow \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /var/tmp/*
 
@@ -74,3 +79,7 @@ RUN go install golang.org/x/tools/gopls@latest
 
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# mise
+RUN curl https://mise.run | sh && \
+    echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
