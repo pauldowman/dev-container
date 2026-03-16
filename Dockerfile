@@ -69,6 +69,14 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
 # Fix ownership of rust/cargo dirs for user
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
 
+# neovim
+RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') && \
+    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${ARCH}.tar.gz && \
+    rm -rf /opt/nvim-linux-${ARCH} && \
+    tar -C /opt -xzf nvim-linux-${ARCH}.tar.gz && \
+    rm nvim-linux-${ARCH}.tar.gz && \
+    ln -sf /opt/nvim-linux-${ARCH}/bin/nvim /usr/local/bin/nvim
+
 USER $USERNAME
 
 # Install dotfiles
@@ -82,13 +90,6 @@ RUN go install golang.org/x/tools/gopls@latest
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN /home/paul/.local/bin/claude plugin marketplace add austintgriffith/ethskills && \
     /home/paul/.local/bin/claude plugin install ethskills
-
-# neovim
-RUN curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
-    rm -rf /opt/nvim-linux-x86_64 && \
-    tar -C /opt -xzf nvim-linux-x86_64.tar.gz && \
-    rm nvim-linux-x86_64.tar.gz && \
-    ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
 
 # mise
 RUN curl https://mise.run | sh && \
