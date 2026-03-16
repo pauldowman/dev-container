@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     git curl sudo zsh fzf ripgrep tmux \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
-    ca-certificates locales \
+    ca-certificates locales unzip \
     just make build-essential direnv bat btop \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
@@ -55,7 +55,8 @@ COPY --from=foundry /usr/local/bin/chisel /usr/local/bin/
 RUN npm install -g typescript typescript-language-server @openai/codex@latest \
     pyright \
     @nomicfoundation/solidity-language-server \
-    bash-language-server
+    bash-language-server \
+    tree-sitter-cli
 
 # Install rust-analyzer
 RUN rustup component add rust-analyzer clippy
@@ -79,7 +80,17 @@ RUN go install golang.org/x/tools/gopls@latest
 
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN /home/paul/.local/bin/claude plugin marketplace add austintgriffith/ethskills && \
+    /home/paul/.local/bin/claude plugin install ethskills
+
+# neovim
+RUN curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz && \
+    rm -rf /opt/nvim-linux-x86_64 && \
+    tar -C /opt -xzf nvim-linux-x86_64.tar.gz && \
+    rm nvim-linux-x86_64.tar.gz && \
+    ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
 
 # mise
 RUN curl https://mise.run | sh && \
     echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
+
