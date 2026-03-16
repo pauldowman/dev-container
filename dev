@@ -43,6 +43,6 @@ case "$1" in
     session_name="${1//\//-}"
     ssh "${ssh_opts[@]}" -t localhost \
       GH_TOKEN="$(gh auth token)" \
-      tmux new-session -A -s "$session_name" -c "$HOME/code/$1"
+      tmux new-session -A -s "$session_name" -c "\$HOME/code/$1"
     ;;
 esac
