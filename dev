@@ -33,7 +33,7 @@ if ! docker ps --format '{{.Names}}' | grep -q '^dev-container$'; then
   docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
 fi
 
-ssh_opts=(-A -i "${HOME}/.ssh/id_signing" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o SetEnv=TERM=xterm-256color -p 2222)
+ssh_opts=(-A -i "${HOME}/.ssh/id_signing" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
 
 case "$1" in
   list)
