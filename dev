@@ -21,6 +21,9 @@ EOF
     ;;
 esac
 
+if [ -z "${SSH_AUTH_SOCK:-}" ]; then
+  eval "$(ssh-agent -s)" >/dev/null
+fi
 ssh-add "${HOME}/.ssh/id_signing" >/dev/null 2>&1 || true
 
 # Start container if not running
