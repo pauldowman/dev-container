@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if ! docker ps --format '{{.Names}}' | grep -q '^dev-container$'; then
+  echo "Starting dev-container..."
+  export DOCKER_CLI_HINTS=false
+  docker compose -f "${SCRIPT_DIR}/docker-compose.yml" up -d
+fi

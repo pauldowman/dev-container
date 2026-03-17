@@ -24,16 +24,11 @@ esac
 if [ -z "${SSH_AUTH_SOCK:-}" ]; then
   eval "$(ssh-agent -s)" >/dev/null
 fi
-ssh-add "${HOME}/.ssh/id_signing" >/dev/null 2>&1 || true
 
-# Start container if not running
-if ! docker ps --format '{{.Names}}' | grep -q '^dev-container$'; then
-  echo "Starting dev-container container..."
-  export DOCKER_CLI_HINTS=false
-  docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
+ssh_opts=(-A -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
+if [ -n "${REMOTE_DEV_SERVER:-}" ]; then
+  ssh_opts+=(-J "$REMOTE_DEV_SERVER")
 fi
-
-ssh_opts=(-A -i "${HOME}/.ssh/id_signing" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
 
 case "$1" in
   list)
