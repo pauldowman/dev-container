@@ -1,7 +1,7 @@
-FROM rust:1.83 AS rust
-FROM golang:1.23 AS golang
+FROM rust:latest AS rust
+FROM golang:latest AS golang
 FROM ghcr.io/foundry-rs/foundry:latest AS foundry
-FROM node:22-bookworm AS node
+FROM node:latest AS node
 
 FROM ubuntu:latest
 
@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales unzip \
-    just make build-essential direnv bat btop \
+    just make build-essential direnv bat btop libatomic1 procps wget \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
