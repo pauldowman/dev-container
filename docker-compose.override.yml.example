@@ -5,4 +5,4 @@
 services:
   dev-container:
     volumes:
-      - ${HOME}/projects:/home/${USER}/projects
+      - "${HOME}/projects:/home/${USER}/projects"
