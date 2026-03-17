@@ -7,11 +7,13 @@ A personal development container. Opinionated and hardcoded for my setup.
 
 ## Setup
 
-Build the image:
+Build the image and start the container:
 
 ```bash
 ./build
 ```
+
+To rebuild the image and restart the container later, run `./build` again. To start the container without rebuilding, run `./start`.
 
 Set up shell integration (adds the `dev` alias and tab completion):
 
@@ -37,16 +39,36 @@ dev subdir/projectname
 
 The working directory inside the container is `~/code/<session-name>`.
 
-## Remote Access
+## Configuration
 
-The `dev` script can connect to a container running on a remote machine. Set `REMOTE_DEV_SERVER` to the hostname of the machine running the container and it will be used as a jump host:
+Copy `.env.example` to `.env` and edit it:
 
 ```bash
-export REMOTE_DEV_SERVER=my-dev-box
-dev projectname
+cp .env.example .env
 ```
 
-Add the export to your `~/.zshrc` to make it permanent.
+The `.env` file is gitignored. Available options:
+
+- `REMOTE_DEV_SERVER` — hostname of a remote machine running the container, used as a jump host
+- `DEV_FORWARD_PORTS` — comma-separated ports to forward from inside the container to your local machine (e.g. `8000,3000`)
+
+## Remote Access
+
+Set `REMOTE_DEV_SERVER` in `.env` to connect to a container running on a remote machine:
+
+```
+REMOTE_DEV_SERVER=my-dev-box
+```
+
+## Port Forwarding
+
+Set `DEV_FORWARD_PORTS` in `.env` to forward ports from inside the container to your local machine:
+
+```
+DEV_FORWARD_PORTS=8000,3000
+```
+
+The ports will be available on `localhost` on your client machine. This works whether connecting directly or via a jump host.
 
 ## Directory Mapping
 
@@ -60,20 +82,6 @@ To add extra mounts without modifying `docker-compose.yml`, copy `docker-compose
 
 ```bash
 cp docker-compose.override.yml.example docker-compose.override.yml
-```
-
-## Starting the Container
-
-The `start` script starts the container if it isn't already running:
-
-```bash
-./start
-```
-
-The `build` script rebuilds the image and restarts the container:
-
-```bash
-./build
 ```
 
 ## Pre-installed Tools
@@ -116,6 +124,6 @@ SSH commit signing works via the mounted SSH agent socket. Configure git in your
 
 ```bash
 git config --global gpg.format ssh
-git config --global user.signingkey ~/.ssh/id_signing.pub
+git config --global user.signingkey ~/.ssh/id_ed25519.pub
 git config --global commit.gpgsign true
 ```
