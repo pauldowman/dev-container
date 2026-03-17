@@ -1,0 +1,8 @@
+# Copy this file to docker-compose.override.yml to add custom mounts.
+# Docker Compose merges this automatically with docker-compose.yml.
+# docker-compose.override.yml is gitignored so changes are local only.
+
+services:
+  dev-container:
+    volumes:
+      - ${HOME}/projects:/home/${USER}/projects
