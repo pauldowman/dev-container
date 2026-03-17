@@ -16,8 +16,7 @@ RUN apt-get update && apt-get install -y \
     && curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" > /etc/apt/sources.list.d/charm.list \
     && apt-get update && apt-get install -y glow \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /var/tmp/*
+    && apt-get clean
 
 RUN ssh-keygen -A && \
     echo "PasswordAuthentication no\nAllowAgentForwarding yes" \
@@ -90,6 +89,9 @@ RUN go install golang.org/x/tools/gopls@latest
 RUN curl -fsSL https://claude.ai/install.sh | bash
 RUN /home/paul/.local/bin/claude plugin marketplace add austintgriffith/ethskills && \
     /home/paul/.local/bin/claude plugin install ethskills
+
+# Tuicr https://tuicr.dev/
+RUN cargo install tuicr
 
 # mise
 RUN curl https://mise.run | sh && \
