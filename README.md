@@ -49,8 +49,10 @@ cp .env.example .env
 
 The `.env` file is gitignored. Available options:
 
+- `SSH_AUTHORIZED_KEYS` — one or more SSH public keys to authorize for login (newline-separated); the first key is also written to `~/.ssh/id_ed25519.pub` for use with git commit signing
+- `SSH_USERNAME` — username inside the container (defaults to your local `$USER`)
 - `REMOTE_DEV_SERVER` — hostname of a remote machine running the container, used as a jump host
-- `DEV_FORWARD_PORTS` — comma-separated ports to forward from inside the container to your local machine (e.g. `8000,3000`)
+- `FORWARD_PORTS` — comma-separated ports to forward from inside the container to your local machine (e.g. `8000,3000`)
 
 ## Remote Access
 
@@ -62,10 +64,10 @@ REMOTE_DEV_SERVER=my-dev-box
 
 ## Port Forwarding
 
-Set `DEV_FORWARD_PORTS` in `.env` to forward ports from inside the container to your local machine:
+Set `FORWARD_PORTS` in `.env` to forward ports from inside the container to your local machine:
 
 ```
-DEV_FORWARD_PORTS=8000,3000
+FORWARD_PORTS=8000,3000
 ```
 
 The ports will be available on `localhost` on your client machine. This works whether connecting directly or via a jump host.

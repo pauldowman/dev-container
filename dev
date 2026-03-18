@@ -30,12 +30,12 @@ if [ -z "${SSH_AUTH_SOCK:-}" ]; then
   eval "$(ssh-agent -s)" >/dev/null
 fi
 
-ssh_opts=(-A -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
+ssh_opts=(-A -l "${SSH_USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
 if [ -n "${REMOTE_DEV_SERVER:-}" ]; then
   ssh_opts+=(-J "$REMOTE_DEV_SERVER")
 fi
-if [ -n "${DEV_FORWARD_PORTS:-}" ]; then
-  IFS=',' read -ra ports <<< "$DEV_FORWARD_PORTS"
+if [ -n "${FORWARD_PORTS:-}" ]; then
+  IFS=',' read -ra ports <<< "$FORWARD_PORTS"
   for port in "${ports[@]}"; do
     ssh_opts+=(-L "${port}:localhost:${port}")
   done
