@@ -41,11 +41,15 @@ if [ -n "${FORWARD_PORTS:-}" ]; then
   done
 fi
 
+username="${SSH_USERNAME:-$USER}"
+hostname="${REMOTE_DEV_SERVER:-localhost}"
+
 case "$1" in
   list)
     ssh "${ssh_opts[@]}" localhost tmux list-sessions
     ;;
   *)
+    echo "Connecting to ${username}@${hostname}..."
     session_name="${1//\//-}"
     ssh "${ssh_opts[@]}" -t localhost \
       GH_TOKEN="$(gh auth token)" \
