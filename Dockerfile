@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales unzip \
-    just make build-essential direnv bat btop libatomic1 procps wget mold \
+    just make build-essential clang direnv bat btop libatomic1 procps wget mold \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
