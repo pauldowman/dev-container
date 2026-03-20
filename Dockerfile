@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 RUN ssh-keygen -A && \
-    echo "PasswordAuthentication no\nAllowAgentForwarding yes" \
+    echo "PasswordAuthentication no\nAllowAgentForwarding yes\nAllowTcpForwarding yes" \
     > /etc/ssh/sshd_config.d/container.conf
 
 ENV LANG=en_US.UTF-8 \
