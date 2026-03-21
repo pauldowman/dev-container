@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales unzip \
-    just make build-essential clang direnv bat btop libatomic1 procps wget mold \
+    just make build-essential clang direnv bat btop libatomic1 procps wget mold shellcheck \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
@@ -66,8 +66,13 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Fix ownership of rust/cargo dirs for user
+# Fix ownership of rust/cargo dirs for user and set default toolchain
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
+USER $USERNAME
+RUN rustup default stable
+# Symlink so rustup works even if RUSTUP_HOME isn't set in the shell (e.g. dotfiles override)
+RUN ln -sf /usr/local/rustup ~/.rustup && ln -sf /usr/local/cargo ~/.cargo
+USER root
 
 # neovim
 RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') && \
@@ -88,8 +93,8 @@ RUN go install golang.org/x/tools/gopls@latest
 
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
-RUN /home/paul/.local/bin/claude plugin marketplace add austintgriffith/ethskills && \
-    /home/paul/.local/bin/claude plugin install ethskills
+RUN $HOME/.local/bin/claude plugin marketplace add austintgriffith/ethskills && \
+    $HOME/.local/bin/claude plugin install ethskills
 
 # Tuicr https://tuicr.dev/
 RUN cargo install tuicr
@@ -98,3 +103,5 @@ RUN cargo install tuicr
 RUN curl https://mise.run | sh && \
     echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
 
+COPY scripts/start.sh /usr/local/bin/start.sh
+CMD ["/usr/local/bin/start.sh"]
