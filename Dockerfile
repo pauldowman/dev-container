@@ -25,7 +25,9 @@ RUN ssh-keygen -A && \
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
+    LC_ALL=en_US.UTF-8 \
+    COLORFGBG="15;0" \
+    GTK_THEME=Adwaita:dark
 
 # Copy Go
 COPY --from=golang /usr/local/go /usr/local/go
@@ -61,7 +63,19 @@ RUN npm install -g typescript typescript-language-server @openai/codex@latest \
 # Install rust-analyzer
 RUN rustup component add rust-analyzer clippy
 
+# mise (version manager)
+RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
+    echo 'eval "$(mise activate zsh)"' >> /etc/zsh/zshrc && \
+    echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc
+
 ARG USERNAME
+ARG DOTFILES_REPO=""
+ARG DOTFILES_INSTALL_CMD="./install.sh"
+
+# Custom root script (runs as root, before user creation; optional)
+RUN --mount=type=bind,source=.,target=/mnt/src \
+    [ -f /mnt/src/custom-install-root.sh ] && bash /mnt/src/custom-install-root.sh || true
+
 RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
@@ -84,24 +98,24 @@ RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') && \
 
 USER $USERNAME
 
-# Install dotfiles
-RUN git clone https://github.com/pauldowman/dotfiles.git ~/dotfiles && \
-    cd ~/dotfiles && ./install.sh
+# Install dotfiles (optional)
+RUN if [ -n "$DOTFILES_REPO" ]; then \
+      git clone "$DOTFILES_REPO" ~/dotfiles && \
+      cd ~/dotfiles && $DOTFILES_INSTALL_CMD; \
+    fi
 
 # Go language server
 RUN go install golang.org/x/tools/gopls@latest
 
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
-RUN $HOME/.local/bin/claude plugin marketplace add austintgriffith/ethskills && \
-    $HOME/.local/bin/claude plugin install ethskills
 
 # Tuicr https://tuicr.dev/
 RUN cargo install tuicr
 
-# mise
-RUN curl https://mise.run | sh && \
-    echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
+# Custom user script (runs as user, after dotfiles and tools; optional)
+RUN --mount=type=bind,source=.,target=/mnt/src \
+    [ -f /mnt/src/custom-install-user.sh ] && bash /mnt/src/custom-install-user.sh || true
 
 COPY scripts/start.sh /usr/local/bin/start.sh
 CMD ["/usr/local/bin/start.sh"]

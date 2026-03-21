@@ -6,13 +6,15 @@ services:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
       args:
-        USERNAME: ${USER}
+        USERNAME: ${USERNAME:-$USER}
+        DOTFILES_REPO: ${DOTFILES_REPO:-}
+        DOTFILES_INSTALL_CMD: ${DOTFILES_INSTALL_CMD:-./install.sh}
     image: dev-container:latest
     ports:
       - "127.0.0.1:2222:22"
     environment:
       - SSH_AUTHORIZED_KEYS
     volumes:
-      - ${HOME}/code:/home/${USER}/code
+      - ${HOST_CODE_DIR:-$HOME/code}:${CONTAINER_CODE_DIR:-/home/${USERNAME:-$USER}/code}
       - ./data/certs:/usr/local/share/ca-certificates/extra:ro
     restart: always

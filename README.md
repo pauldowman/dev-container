@@ -3,9 +3,15 @@
 > [!NOTE]
 > Despite the name, this is not a Dev Container per the [containers.dev](https://containers.dev) specification. It's a plain Docker container managed with Docker Compose.
 
-A personal development container. Opinionated and hardcoded for my setup.
+A Docker-based development environment with SSH access, supporting multiple language toolchains. Includes Go, Rust, Node.js, and Foundry (Ethereum), plus a full suite of CLI tools and language servers.
 
 ## Setup
+
+Copy `.env.example` to `.env` and configure it:
+
+```bash
+cp .env.example .env
+```
 
 Build the image and start the container:
 
@@ -15,7 +21,7 @@ Build the image and start the container:
 
 To rebuild the image and restart the container later, run `./build` again. To start the container without rebuilding, run `./start`.
 
-Set up shell integration (adds the `dev` alias and tab completion):
+Set up shell integration (adds the `dev` command and tab completion):
 
 ```bash
 eval "$(~/code/dev-container/dev --init)"
@@ -41,18 +47,48 @@ The working directory inside the container is `~/code/<session-name>`.
 
 ## Configuration
 
-Copy `.env.example` to `.env` and edit it:
-
-```bash
-cp .env.example .env
-```
-
 The `.env` file is gitignored. Available options:
 
-- `SSH_AUTHORIZED_KEYS` — one or more SSH public keys to authorize for login (newline-separated); the first key is also written to `~/.ssh/id_ed25519.pub` for use with git commit signing
-- `SSH_USERNAME` — username inside the container (defaults to your local `$USER`)
-- `REMOTE_DEV_SERVER` — hostname of a remote machine running the container, used as a jump host
-- `FORWARD_PORTS` — comma-separated ports to forward from inside the container to your local machine (e.g. `8000,3000`)
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SSH_AUTHORIZED_KEYS` | Yes | — | One or more SSH public keys (newline-separated); the first is also written to `~/.ssh/id_ed25519.pub` for git commit signing |
+| `USERNAME` | No | `$USER` | Username inside the container |
+| `DOTFILES_REPO` | No | — | Git repo URL to clone and install as dotfiles |
+| `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
+| `HOST_CODE_DIR` | No | `~/code` | Host directory to mount as `~/code` in the container |
+| `DOCKERFILE` | No | `Dockerfile` | Dockerfile to build (use `Dockerfile.gui` for GUI access) |
+| `REMOTE_DEV_SERVER` | No | — | Hostname of a remote machine running the container, used as a jump host |
+| `FORWARD_PORTS` | No | — | Comma-separated ports to forward from the container to your local machine |
+
+## Customization
+
+Two optional scripts can be created locally (both are gitignored):
+
+**`custom-install-root.sh`** — runs as root after the toolchains are installed, before the user is created. Use for extra `apt` packages or system-level config.
+
+**`custom-install-user.sh`** — runs as the container user after dotfiles are installed. Use for personal tools, shell plugins, or user-level config.
+
+Example `custom-install-user.sh`:
+
+```bash
+# Install mise (version manager)
+curl https://mise.run | sh
+echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
+
+# Install Claude plugins
+$HOME/.local/bin/claude plugin marketplace add austintgriffith/ethskills
+$HOME/.local/bin/claude plugin install ethskills
+```
+
+## GUI Access
+
+Use `Dockerfile.gui` to get an XFCE4 desktop accessible via RDP:
+
+```
+DOCKERFILE=Dockerfile.gui
+```
+
+Connect with any RDP client to `localhost:3389`. The desktop is configured with dark mode and a single workspace by default.
 
 ## Remote Access
 
@@ -74,9 +110,7 @@ The ports will be available on `localhost` on your client machine. This works wh
 
 ## Directory Mapping
 
-| Host     | Container  |
-| -------- | ---------- |
-| `~/code` | `~/code`   |
+The host directory `HOST_CODE_DIR` (default: `~/code`) is mounted as `~/code` inside the container.
 
 ### Custom Mounts
 
@@ -89,9 +123,9 @@ cp docker-compose.override.yml.example docker-compose.override.yml
 ## Pre-installed Tools
 
 ### Languages & Runtimes
-- Go 1.23
-- Rust 1.83
-- Node.js 22
+- Go (latest)
+- Rust (latest stable)
+- Node.js (latest)
 - Python 3.12
 
 ### Language Servers
@@ -111,10 +145,8 @@ cp docker-compose.override.yml.example docker-compose.override.yml
 - Foundry: forge, cast, anvil, chisel
 
 ### AI Assistants
-- Claude Code (with ethskills plugin)
+- Claude Code
 - OpenAI Codex
-
-Dotfiles are installed from https://github.com/pauldowman/dotfiles.git
 
 ## Custom CA Certificates
 

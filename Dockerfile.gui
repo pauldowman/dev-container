@@ -5,14 +5,11 @@ USER root
 
 RUN echo "$USERNAME:$USERNAME" | chpasswd
 
-RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 fonts-liberation \
+RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 \
     && adduser xrdp ssl-cert \
     && printf '#!/bin/sh\nexec startxfce4\n' > /etc/xrdp/startwm.sh \
     && apt-get clean \
-    && rm -rf /usr/share/backgrounds/xfce/* \
-    && curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb \
-    && apt-get install -y /tmp/chrome.deb \
-    && rm /tmp/chrome.deb
+    && rm -rf /usr/share/backgrounds/xfce/*
 
 COPY scripts/start-gui.sh /usr/local/bin/start-gui.sh
 
