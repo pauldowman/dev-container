@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales unzip \
-    just make build-essential clang direnv bat btop libatomic1 procps wget mold shellcheck \
+    make build-essential clang direnv bat btop libatomic1 procps wget mold shellcheck \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y \
     && echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" > /etc/apt/sources.list.d/charm.list \
     && apt-get update && apt-get install -y glow \
     && apt-get clean
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
 RUN ssh-keygen -A && \
     echo "PasswordAuthentication no\nAllowAgentForwarding yes\nAllowTcpForwarding yes" \
