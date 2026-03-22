@@ -5,7 +5,7 @@ USER root
 
 RUN echo "$USERNAME:$USERNAME" | chpasswd
 
-RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 \
+RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 fonts-liberation \
     && adduser xrdp ssl-cert \
     && printf '#!/bin/sh\nexec startxfce4\n' > /etc/xrdp/startwm.sh \
     && apt-get clean \
