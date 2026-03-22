@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates locales unzip \
     make build-essential clang direnv bat btop libatomic1 procps wget mold shellcheck \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+    libevent-2.1-7t64 libgstreamer-plugins-bad1.0-0 libflite1 libavif16 \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
