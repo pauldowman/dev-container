@@ -14,7 +14,11 @@ services:
       - "127.0.0.1:2222:22"
     environment:
       - SSH_AUTHORIZED_KEYS
+      - TZ
+      - CODE_DIR
     volumes:
-      - ${HOST_CODE_DIR:-$HOME/code}:${CONTAINER_CODE_DIR:-/home/${USERNAME:-$USER}/code}
+      - ${CODE_DIR:?Set CODE_DIR in .env}:${CODE_DIR}
+      - /var/run/docker.sock:/var/run/docker.sock
       - ./data/certs:/usr/local/share/ca-certificates/extra:ro
+      - /etc/localtime:/etc/localtime:ro
     restart: always
