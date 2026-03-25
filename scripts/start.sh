@@ -11,7 +11,8 @@ chmod 600 ~/.ssh/authorized_keys ~/.ssh/id_ed25519.pub
 if [ -S /var/run/docker.sock ]; then
   DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
   sudo groupadd -g "$DOCKER_GID" docker 2>/dev/null || true
-  sudo usermod -aG docker "$(whoami)"
+  DOCKER_GROUP=$(getent group "$DOCKER_GID" | cut -d: -f1)
+  sudo usermod -aG "$DOCKER_GROUP" "$(whoami)"
 fi
 
 sudo mkdir -p /run/sshd
