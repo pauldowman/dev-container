@@ -10,9 +10,15 @@ RUN apt-get update && apt-get install -y \
     iproute2 dnsutils \
     openssh-client openssh-server jq vim gh gpg python3.12-venv \
     ca-certificates locales unzip \
-    make build-essential clang direnv bat btop libatomic1 procps wget mold shellcheck \
+    make m4 build-essential clang libclang-dev llvm-dev cmake direnv bat btop libatomic1 procps wget mold shellcheck \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
     libevent-2.1-7t64 libgstreamer-plugins-bad1.0-0 libflite1 libavif16 \
+    libsqlite3-dev libpq-dev \
+    libsnappy-dev liblz4-dev libzstd-dev libbz2-dev \
+    protobuf-compiler libprotobuf-dev \
+    libsasl2-dev \
+    libudev-dev libdbus-1-dev \
+    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
