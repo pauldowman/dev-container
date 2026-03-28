@@ -77,7 +77,8 @@ RUN rustup component add rust-analyzer clippy
 # mise (version manager)
 RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
     echo 'eval "$(mise activate zsh)"' >> /etc/zsh/zshrc && \
-    echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc
+    echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc && \
+    echo 'export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"' >> /etc/zsh/zshrc
 
 ARG USERNAME
 ARG DOTFILES_REPO=""
@@ -89,7 +90,12 @@ RUN --mount=type=bind,source=.,target=/mnt/src \
 
 RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -ms /bin/zsh $USERNAME && \
-    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /home/$USERNAME/.ssh && \
+    printf 'if [ -n "$SSH_AUTH_SOCK" ]; then\n    ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"\nfi\n' \
+    > /home/$USERNAME/.ssh/rc && \
+    chmod 755 /home/$USERNAME/.ssh/rc && \
+    chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
 
 # Fix ownership of rust/cargo dirs for user and set default toolchain
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
