@@ -73,8 +73,6 @@ RUN npm install -g typescript typescript-language-server @openai/codex@latest \
     bash-language-server \
     tree-sitter-cli
 
-# Install rust-analyzer
-RUN rustup component add rust-analyzer clippy
 
 # mise (version manager)
 RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
@@ -102,7 +100,8 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
 # Fix ownership of rust/cargo dirs for user and set default toolchain
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
 USER $USERNAME
-RUN rustup default stable
+RUN rustup default stable && \
+    rustup component add rust-analyzer clippy rustfmt
 # Symlink so rustup works even if RUSTUP_HOME isn't set in the shell (e.g. dotfiles override)
 RUN ln -sf /usr/local/rustup ~/.rustup && ln -sf /usr/local/cargo ~/.cargo
 USER root
