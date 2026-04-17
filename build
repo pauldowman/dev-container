@@ -7,4 +7,3 @@ cd "${SCRIPT_DIR}"
 docker compose down --remove-orphans
 docker rm -f dev-container 2>/dev/null || true
 docker compose build "$@"
-docker compose up -d
