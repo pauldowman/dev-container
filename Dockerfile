@@ -93,7 +93,7 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     ln -s /home /Users && \
     mkdir -p /home/$USERNAME/.ssh && \
-    printf 'if [ -n "$SSH_AUTH_SOCK" ]; then\n    ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"\nfi\n' \
+    printf 'if [ -n "$SSH_AUTH_SOCK" ]; then\n    ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"\n    tmux set-environment -g SSH_AUTH_SOCK "$SSH_AUTH_SOCK" 2>/dev/null || true\nfi\n' \
     > /home/$USERNAME/.ssh/rc && \
     chmod 755 /home/$USERNAME/.ssh/rc && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
