@@ -46,11 +46,12 @@ Use the `dev` script to connect. It opens (or reattaches to) a named tmux sessio
 ./dev list             # list active tmux sessions
 ```
 
-The script connects to `localhost:2222` by default. If `REMOTE_DEV_SERVER` is set in `.env`, it uses that host as a jump host and reports the remote hostname when connecting.
+The script connects to `localhost:2222`. To connect from a remote machine, SSH to the host and run the script there:
 
-Optional `.env` vars:
-- `SSH_USERNAME` — override the SSH username (defaults to `$USER`)
-- `REMOTE_DEV_SERVER` — if set, used as a jump host (`-J`) to reach the container on a remote machine
-- `FORWARD_PORTS` — comma-separated list of ports to forward locally
+```sh
+ssh -t dev /home/paul/code/dev-container/dev <session-name>
+```
+
+Port forwarding from the container is handled via `LocalForward` entries in the remote machine's `~/.ssh/config` for the host.
 
 Run `eval "$(./dev --init)"` to enable zsh tab completion for session names and `~/code` subdirectories.

@@ -45,9 +45,6 @@ if [ -z "${SSH_AUTH_SOCK:-}" ]; then
 fi
 
 ssh_opts=(-A -l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
-if [ -n "${REMOTE_DEV_SERVER:-}" ]; then
-  ssh_opts+=(-J "$REMOTE_DEV_SERVER")
-fi
 if [ -n "${FORWARD_PORTS:-}" ]; then
   IFS=',' read -ra ports <<< "$FORWARD_PORTS"
   for port in "${ports[@]}"; do
@@ -55,15 +52,12 @@ if [ -n "${FORWARD_PORTS:-}" ]; then
   done
 fi
 
-username="${USERNAME:-$USER}"
-hostname="${REMOTE_DEV_SERVER:-localhost}"
-
 case "$1" in
   list)
     ssh "${ssh_opts[@]}" localhost tmux list-sessions
     ;;
   *)
-    echo "Connecting to ${username}@${hostname}..."
+    echo "Connecting to ${USERNAME:-$USER}@localhost..."
     session_name="${1//\//-}"
     ssh "${ssh_opts[@]}" -t localhost \
       GH_TOKEN="$(gh auth token)" \
