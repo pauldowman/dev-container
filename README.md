@@ -55,10 +55,8 @@ The `.env` file is gitignored. Available options:
 | `USERNAME` | No | `$USER` | Username inside the container |
 | `DOTFILES_REPO` | No | — | Git repo URL to clone and install as dotfiles |
 | `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
-| `HOST_CODE_DIR` | No | `~/code` | Host directory to mount as `~/code` in the container |
+| `CODE_DIR` | Yes | — | Absolute host path to code directory (e.g. `/Users/paul/code`); mounted at the same path inside the container |
 | `DOCKERFILE` | No | `Dockerfile` | Dockerfile to build (use `Dockerfile.gui` for GUI access) |
-| `REMOTE_DEV_SERVER` | No | — | Hostname of a remote machine running the container, used as a jump host |
-| `FORWARD_PORTS` | No | — | Comma-separated ports to forward from the container to your local machine |
 
 ## Customization
 
@@ -90,27 +88,9 @@ DOCKERFILE=Dockerfile.gui
 
 Connect with any RDP client to `localhost:3389`. The desktop is configured with dark mode and a single workspace by default.
 
-## Remote Access
-
-Set `REMOTE_DEV_SERVER` in `.env` to connect to a container running on a remote machine:
-
-```
-REMOTE_DEV_SERVER=my-dev-box
-```
-
-## Port Forwarding
-
-Set `FORWARD_PORTS` in `.env` to forward ports from inside the container to your local machine:
-
-```
-FORWARD_PORTS=8000,3000
-```
-
-The ports will be available on `localhost` on your client machine. This works whether connecting directly or via a jump host.
-
 ## Directory Mapping
 
-The host directory `HOST_CODE_DIR` (default: `~/code`) is mounted as `~/code` inside the container.
+`CODE_DIR` is mounted at the same path inside the container. On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code` resolves correctly regardless of the host path.
 
 ### Custom Mounts
 

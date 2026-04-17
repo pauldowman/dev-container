@@ -8,7 +8,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 
 - Ubuntu base image with Go, Rust, Node.js, and Foundry (Ethereum) toolchains
 - SSH-only access (no password auth) on port 2222 (localhost only)
-- Code directory is volume-mounted at the same path inside and outside the container (for Docker socket compatibility)
+- Code directory is volume-mounted at the same path inside and outside the container; host path (`CODE_DIR`) is passed into the container as `$CODE_DIR` for Docker socket compatibility
 - Host Docker socket is mounted for running Docker commands inside the container
 - Installs dotfiles from https://github.com/pauldowman/dotfiles
 - Includes neovim, Claude CLI, tmux, zsh, fzf, ripgrep, mise, and dev tools
@@ -35,7 +35,7 @@ DOCKERFILE=Dockerfile.gui ./build
 Required env vars (typically in `.env`):
 - `USERNAME` — the container user (should match host username)
 - `SSH_AUTHORIZED_KEYS` — newline-separated public keys; first key is also used as the user's public key
-- `CODE_DIR` — absolute path to code directory (e.g. `/Users/paul/code`), mounted at the same path inside and outside the container for Docker socket compatibility
+- `CODE_DIR` — absolute path to code directory (e.g. `/Users/paul/code`), mounted at the same path inside the container; passed as `$CODE_DIR` so Docker-in-Docker volume paths work
 
 ## Connecting
 

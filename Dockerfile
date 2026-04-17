@@ -91,6 +91,7 @@ RUN --mount=type=bind,source=.,target=/mnt/src \
 RUN userdel -r ubuntu 2>/dev/null || true && \
     useradd -ms /bin/zsh $USERNAME && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    ln -s /home /Users && \
     mkdir -p /home/$USERNAME/.ssh && \
     printf 'if [ -n "$SSH_AUTH_SOCK" ]; then\n    ln -sf "$SSH_AUTH_SOCK" "$HOME/.ssh/agent.sock"\nfi\n' \
     > /home/$USERNAME/.ssh/rc && \
