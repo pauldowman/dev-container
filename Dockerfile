@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     libsasl2-dev \
     libudev-dev libdbus-1-dev \
     gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu \
+    zip \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
