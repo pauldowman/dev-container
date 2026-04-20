@@ -57,6 +57,8 @@ The `.env` file is gitignored. Available options:
 | `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
 | `CODE_DIR` | Yes | — | Absolute host path to code directory (e.g. `/Users/paul/code`); mounted at the same path inside the container |
 | `DOCKERFILE` | No | `Dockerfile` | Dockerfile to build (use `Dockerfile.gui` for GUI access) |
+| `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
+| `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`) |
 
 ## Customization
 
@@ -69,13 +71,11 @@ Two optional scripts can be created locally (both are gitignored):
 Example `custom-install-user.sh`:
 
 ```bash
-# Install mise (version manager)
-curl https://mise.run | sh
-echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
+# Install a mise plugin and tool version
+mise use --global node@lts
 
-# Install Claude plugins
-$HOME/.local/bin/claude plugin marketplace add austintgriffith/ethskills
-$HOME/.local/bin/claude plugin install ethskills
+# Add shell config
+echo 'export MY_VAR=value' >> ~/.zshrc.local
 ```
 
 ## GUI Access
@@ -102,31 +102,13 @@ cp docker-compose.override.yml.example docker-compose.override.yml
 
 ## Pre-installed Tools
 
-### Languages & Runtimes
-- Go (latest)
-- Rust (latest stable)
-- Node.js (latest)
-- Python 3.12
+See the [Dockerfile](Dockerfile) for the full list. Highlights:
 
-### Language Servers
-- gopls (Go)
-- rust-analyzer, clippy (Rust)
-- typescript-language-server (TypeScript/JavaScript)
-- pyright (Python)
-- solidity-language-server (Solidity)
-- bash-language-server (Bash)
-
-### CLI Tools
-- git, gh, jq, vim, neovim, fzf, ripgrep, zsh, tmux
-- just, make, direnv, bat, btop, glow
-- tuicr, mise
-
-### Blockchain
-- Foundry: forge, cast, anvil, chisel
-
-### AI Assistants
-- Claude Code
-- OpenAI Codex
+- **Languages:** Go, Rust, Node.js, Python
+- **Language servers:** gopls, rust-analyzer, typescript-language-server, pyright, solidity-language-server, bash-language-server
+- **CLI:** git, gh, docker, gcloud, neovim, tmux, fzf, ripgrep, just, direnv, mise, glow, and others
+- **Blockchain:** Foundry (forge, cast, anvil, chisel)
+- **AI:** Claude Code, OpenAI Codex
 
 ## Custom CA Certificates
 
