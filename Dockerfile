@@ -67,14 +67,6 @@ COPY --from=foundry /usr/local/bin/cast /usr/local/bin/
 COPY --from=foundry /usr/local/bin/anvil /usr/local/bin/
 COPY --from=foundry /usr/local/bin/chisel /usr/local/bin/
 
-# Install global npm packages (now that node is available)
-RUN npm install -g typescript typescript-language-server @openai/codex@latest \
-    pyright \
-    @nomicfoundation/solidity-language-server \
-    bash-language-server \
-    tree-sitter-cli
-
-
 # mise (version manager)
 RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
     echo 'eval "$(mise activate zsh)"' >> /etc/zsh/zshrc && \
@@ -129,6 +121,15 @@ RUN go install golang.org/x/tools/gopls@latest
 
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Codex CLI and language servers (user-scope npm globals)
+RUN npm config set prefix "$HOME/.npm-global" && \
+    npm install -g typescript typescript-language-server @openai/codex@latest \
+        pyright \
+        @nomicfoundation/solidity-language-server \
+        bash-language-server \
+        tree-sitter-cli && \
+    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' | sudo tee -a /etc/zsh/zshrc /etc/bash.bashrc > /dev/null
 
 # Tuicr https://tuicr.dev/
 RUN cargo install tuicr
