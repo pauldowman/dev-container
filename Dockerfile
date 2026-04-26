@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     make m4 build-essential clang libclang-dev llvm-dev cmake direnv bat btop libatomic1 procps wget mold shellcheck \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
     libevent-2.1-7t64 libgstreamer-plugins-bad1.0-0 libflite1 libavif16 \
-    libsqlite3-dev libpq-dev \
+    libsqlite3-dev sqlite3 libpq-dev \
     libsnappy-dev liblz4-dev libzstd-dev libbz2-dev \
     protobuf-compiler libprotobuf-dev \
     libsasl2-dev \
