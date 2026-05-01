@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler libprotobuf-dev \
     libsasl2-dev \
     libudev-dev libdbus-1-dev \
-    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu \
+    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu gcc-mips64-linux-gnuabi64 \
     zip \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
