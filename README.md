@@ -92,6 +92,14 @@ Connect with any RDP client to `localhost:3389`. The desktop is configured with 
 
 `CODE_DIR` is mounted at the same path inside the container. On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code` resolves correctly regardless of the host path.
 
+The home directory (`/home/$USERNAME`) is backed by a named Docker volume (`dev-container_home`), so shell history, caches, configs, and runtime-installed tools persist across container restarts and rebuilds. On first run, the volume is seeded from the image's home directory (dotfiles, etc.). Subsequent rebuilds will *not* overwrite the volume — to pick up new home-dir content from a rebuilt image, remove the volume first:
+
+```bash
+docker compose down
+docker volume rm dev-container_home
+./build
+```
+
 ### Custom Mounts
 
 To add extra mounts without modifying `docker-compose.yml`, copy `docker-compose.override.yml.example` to `docker-compose.override.yml` and edit it. The override file is gitignored so changes stay local.
