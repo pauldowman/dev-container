@@ -134,6 +134,9 @@ RUN npm config set prefix "$HOME/.npm-global" && \
 # Tuicr https://tuicr.dev/
 RUN cargo install tuicr
 
+# kubie
+RUN cargo install kubie
+
 # Custom user script (runs as user, after dotfiles and tools; optional)
 RUN --mount=type=bind,source=.,target=/mnt/src \
     [ -f /mnt/src/custom-install-user.sh ] && bash /mnt/src/custom-install-user.sh || true
