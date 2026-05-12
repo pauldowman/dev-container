@@ -5,6 +5,10 @@
 
 A Docker-based development environment with SSH access, supporting multiple language toolchains. Includes Go, Rust, Node.js, and Foundry (Ethereum), plus a full suite of CLI tools and language servers.
 
+By default, the container mounts the host Docker socket so tools inside the
+container can run Docker commands against the host daemon. Treat code running in
+the container as having host-root-equivalent access.
+
 ## Setup
 
 Copy `.env.example` to `.env` and configure it:
@@ -90,7 +94,14 @@ Connect with any RDP client to `localhost:3389`. The desktop is configured with 
 
 ## Directory Mapping
 
-`CODE_DIR` is mounted at the same path inside the container. On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code` resolves correctly regardless of the host path.
+`CODE_DIR` is mounted at the same path inside the container. It should be
+created and owned by your host user before Docker Compose starts the container;
+otherwise Docker may auto-create it as root, which makes it awkward to write to
+from the container user. The `./start` script creates it when missing and fails
+with an ownership hint if it is not writable.
+
+On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code`
+resolves correctly regardless of the host path.
 
 The home directory (`/home/$USERNAME`) is backed by a named Docker volume (`dev-container_home`), so shell history, caches, configs, and runtime-installed tools persist across container restarts and rebuilds. On first run, the volume is seeded from the image's home directory (dotfiles, etc.). Subsequent rebuilds will *not* overwrite the volume — to pick up new home-dir content from a rebuilt image, remove the volume first:
 
@@ -107,6 +118,11 @@ To add extra mounts without modifying `docker-compose.yml`, copy `docker-compose
 ```bash
 cp docker-compose.override.yml.example docker-compose.override.yml
 ```
+
+The default configuration mounts the host Docker socket. This is convenient for
+tests or build tools that start sibling containers, but it defeats container
+isolation because access to the host Docker daemon can be used to mount host
+paths or start privileged containers.
 
 ## Pre-installed Tools
 

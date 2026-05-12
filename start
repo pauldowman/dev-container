@@ -3,6 +3,24 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/.env"
+fi
+
+if [ -z "${CODE_DIR:-}" ]; then
+  echo "Error: CODE_DIR must be set in .env" >&2
+  exit 1
+fi
+
+mkdir -p "$CODE_DIR"
+if [ ! -w "$CODE_DIR" ]; then
+  echo "Error: CODE_DIR is not writable by $(id -un): $CODE_DIR" >&2
+  echo "Fix ownership on the host, for example:" >&2
+  echo "  sudo chown -R $(id -u):$(id -g) '$CODE_DIR'" >&2
+  exit 1
+fi
+
 if ! docker ps --format '{{.Names}}' | grep -q '^dev-container$'; then
   echo "Starting dev-container..."
   export DOCKER_CLI_HINTS=false
