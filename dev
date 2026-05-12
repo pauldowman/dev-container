@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 case "${1:-}" in
   --init)
+    shell="${2:-${SHELL:-}}"
+    shell="${shell##*/}"
     if [ -f "$SCRIPT_DIR/.env" ]; then
       # shellcheck source=/dev/null
       source "$SCRIPT_DIR/.env"
@@ -14,7 +16,35 @@ case "${1:-}" in
       exit 1
     fi
     code_dir="$CODE_DIR"
-    cat <<EOF
+    case "$shell" in
+      fish)
+        cat <<EOF
+function __dev_complete_dirs
+  set -l token (commandline -ct)
+  set -l code_dir "$code_dir"
+  set -l prefix ""
+  set -l search_dir "\$code_dir"
+
+  if string match -q "*/*" -- "\$token"
+    set prefix (string replace -r '[^/]*$' '' -- "\$token")
+    set search_dir "\$code_dir/\$prefix"
+  end
+
+  if test -d "\$search_dir"
+    for path in "\$search_dir"*/
+      test -d "\$path"; or continue
+      printf "%s%s/\n" "\$prefix" (basename "\$path")
+    end
+  end
+end
+
+complete -c dev -f
+complete -c dev -n 'not __fish_seen_subcommand_from list' -a list -d 'List active tmux sessions'
+complete -c dev -n 'not __fish_seen_subcommand_from list' -a '(__dev_complete_dirs)'
+EOF
+        ;;
+      zsh|"")
+        cat <<EOF
 _dev() {
   _alternative \\
     'args:subcommand:(list)' \\
@@ -22,6 +52,13 @@ _dev() {
 }
 compdef _dev dev
 EOF
+        ;;
+      *)
+        echo "Error: unsupported shell for --init: $shell" >&2
+        echo "Supported shells: zsh, fish" >&2
+        exit 1
+        ;;
+    esac
     exit 0
     ;;
   "")

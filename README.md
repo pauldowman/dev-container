@@ -27,11 +27,19 @@ To rebuild the image and restart the container later, run `./build` again. To st
 
 Set up shell integration (adds the `dev` command and tab completion):
 
-```bash
+```zsh
 eval "$(~/code/dev-container/dev --init)"
 ```
 
 Add this to your `~/.zshrc` to load it automatically.
+
+For fish:
+
+```fish
+~/code/dev-container/dev --init fish | source
+```
+
+Add this to `~/.config/fish/config.fish` to load it automatically.
 
 ## Usage
 

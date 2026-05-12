@@ -54,4 +54,4 @@ ssh -t dev /home/paul/code/dev-container/dev <session-name>
 
 Port forwarding from the container is handled via `LocalForward` entries in the remote machine's `~/.ssh/config` for the host.
 
-Run `eval "$(./dev --init)"` to enable zsh tab completion for session names and `~/code` subdirectories.
+Run `eval "$(./dev --init)"` in zsh, or `./dev --init fish | source` in fish, to enable tab completion for session names and `~/code` subdirectories.
