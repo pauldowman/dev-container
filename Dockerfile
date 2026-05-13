@@ -129,7 +129,7 @@ RUN npm config set prefix "$HOME/.npm-global" && \
         @nomicfoundation/solidity-language-server \
         bash-language-server \
         tree-sitter-cli && \
-    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' | sudo tee -a /etc/zsh/zshrc /etc/bash.bashrc > /dev/null
+    echo 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"' | sudo tee -a /etc/zsh/zshrc /etc/bash.bashrc > /dev/null
 
 # Tuicr https://tuicr.dev/
 RUN cargo install tuicr
