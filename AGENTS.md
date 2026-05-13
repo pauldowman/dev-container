@@ -9,7 +9,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 - Ubuntu base image with Go, Rust, Node.js, and Foundry (Ethereum) toolchains
 - SSH-only access (no password auth) on port 2222 (localhost only)
 - Code directory is volume-mounted at the same path inside and outside the container; host path (`CODE_DIR`) is passed into the container as `$CODE_DIR` for Docker socket compatibility
-- Host Docker socket is mounted for running Docker commands inside the container
+- Host Docker socket is mounted for running Docker commands inside the container. This is convenient for sibling-container workflows, but it is host-root-equivalent access.
 - Installs dotfiles from https://github.com/pauldowman/dotfiles
 - Includes neovim, Claude CLI, tmux, zsh, fzf, ripgrep, mise, and dev tools
 
@@ -35,7 +35,7 @@ DOCKERFILE=Dockerfile.gui ./build
 Required env vars (typically in `.env`):
 - `USERNAME` — the container user (should match host username)
 - `SSH_AUTHORIZED_KEYS` — newline-separated public keys; first key is also used as the user's public key
-- `CODE_DIR` — absolute path to code directory (e.g. `/Users/paul/code`), mounted at the same path inside the container; passed as `$CODE_DIR` so Docker-in-Docker volume paths work
+- `CODE_DIR` — absolute path to code directory (e.g. `/Users/paul/code`), mounted at the same path inside the container; passed as `$CODE_DIR` so Docker-in-Docker volume paths work. It should be owned by the host user, not root.
 
 ## Connecting
 
@@ -54,4 +54,4 @@ ssh -t dev /home/paul/code/dev-container/dev <session-name>
 
 Port forwarding from the container is handled via `LocalForward` entries in the remote machine's `~/.ssh/config` for the host.
 
-Run `eval "$(./dev --init)"` to enable zsh tab completion for session names and `~/code` subdirectories.
+Run `eval "$(./dev --init)"` in zsh, or `./dev --init fish | source` in fish, to enable tab completion for session names and `~/code` subdirectories.
