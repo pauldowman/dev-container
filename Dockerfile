@@ -110,6 +110,9 @@ RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') && \
 
 USER $USERNAME
 
+# Default user config (overridden by dotfiles install below when DOTFILES_REPO is set)
+COPY --chown=$USERNAME:$USERNAME defaults/ /home/$USERNAME/
+
 # Install dotfiles (optional)
 RUN if [ -n "$DOTFILES_REPO" ]; then \
       git clone "$DOTFILES_REPO" ~/dotfiles && \

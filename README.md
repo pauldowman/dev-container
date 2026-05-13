@@ -61,6 +61,12 @@ The `.env` file is gitignored. Available options:
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`) |
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
 
+## Default Config
+
+The `defaults/` directory holds minimal default config files (tmux, zsh, Claude Code, Codex, tuicr) that are copied into the container user's home directory at build time. They give a usable baseline when no `DOTFILES_REPO` is set.
+
+If `DOTFILES_REPO` is set, the dotfiles install runs *after* the defaults are copied and overwrites them (assuming the dotfiles install symlinks or writes to the same paths). To customize the defaults for everyone using this container, edit the files under `defaults/`; for personal config, use `DOTFILES_REPO`.
+
 ## Customization
 
 Two optional scripts can be created locally (both are gitignored):

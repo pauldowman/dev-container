@@ -1,0 +1,5 @@
+trust_level = "trusted"
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+network_access = "enabled"
+model_reasoning_effort = "high"
