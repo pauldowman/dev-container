@@ -60,8 +60,12 @@ case "$1" in
   *)
     echo "Connecting to ${USERNAME:-$USER}@localhost..."
     session_name="${1//\//-}"
+    if [ -z "${GH_TOKEN:-}" ]; then
+      echo "Warning: GH_TOKEN not set in .env, falling back to 'gh auth token' (which may have broader privileges than needed)" >&2
+      GH_TOKEN="$(gh auth token)"
+    fi
     ssh "${ssh_opts[@]}" -t localhost \
-      GH_TOKEN="$(gh auth token)" \
+      GH_TOKEN="$GH_TOKEN" \
       tmux new-session -A -s "$session_name" -c "$CODE_DIR/$1"
     ;;
 esac
