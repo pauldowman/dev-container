@@ -3,7 +3,49 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/.env"
+fi
+
+INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
+build_args=()
+
+usage() {
+  echo "Usage: build [--instance <name>] [docker compose build options]" >&2
+}
+
+validate_instance() {
+  if [[ ! "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "Error: instance must start with a lowercase letter or digit and contain only lowercase letters, digits, underscores, or hyphens" >&2
+    exit 1
+  fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --instance)
+      if [[ -z "${2:-}" ]]; then
+        usage
+        exit 1
+      fi
+      INSTANCE="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      build_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+validate_instance
+
 cd "${SCRIPT_DIR}"
-docker compose down --remove-orphans
-docker rm -f dev-container 2>/dev/null || true
-docker compose build "$@"
+env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" down --remove-orphans
+docker rm -f "$INSTANCE" 2>/dev/null || true
+env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" build "${build_args[@]}"

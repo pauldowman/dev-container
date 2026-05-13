@@ -45,6 +45,25 @@ dev subdir/projectname
 
 The working directory inside the container is `~/code/<session-name>`.
 
+### Multiple Instances
+
+The default instance is named `dev-container` and uses SSH port `2222`. To run another instance, give it a unique instance name and SSH port:
+
+```bash
+./start --instance work --ssh-port 2223
+dev --instance work projectname
+dev --instance work list
+```
+
+The instance name is used as the Docker Compose project name, container name, and hostname. Each instance gets its own Docker-managed home volume, such as `work_home`, while sharing the same image and `CODE_DIR` mount.
+
+You can also set defaults with environment variables:
+
+```bash
+DEV_CONTAINER_INSTANCE=work SSH_PORT=2223 ./start
+DEV_CONTAINER_INSTANCE=work dev projectname
+```
+
 ## Configuration
 
 The `.env` file is gitignored. Available options:
@@ -60,6 +79,8 @@ The `.env` file is gitignored. Available options:
 | `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`) |
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
+| `SSH_PORT` | No | `2222` | Host SSH port published by `./start`; use a unique port for each running instance |
+| `DEV_CONTAINER_INSTANCE` | No | `dev-container` | Default instance name for `./build`, `./start`, and `./dev`; can be overridden with `--instance` |
 
 ## Default Config
 
@@ -99,10 +120,10 @@ Connect with any RDP client to `localhost:3389`. The desktop is configured with 
 
 `CODE_DIR` is mounted at the same path inside the container. On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code` resolves correctly regardless of the host path.
 
-The home directory (`/home/$USERNAME`) is backed by a named Docker volume (`dev-container_home`), so shell history, caches, configs, and runtime-installed tools persist across container restarts and rebuilds. On first run, the volume is seeded from the image's home directory (dotfiles, etc.). Subsequent rebuilds will *not* overwrite the volume — to pick up new home-dir content from a rebuilt image, remove the volume first:
+The home directory (`/home/$USERNAME`) is backed by a named Docker volume (`dev-container_home` for the default instance), so shell history, caches, configs, and runtime-installed tools persist across container restarts and rebuilds. On first run, the volume is seeded from the image's home directory (dotfiles, etc.). Subsequent rebuilds will *not* overwrite the volume — to pick up new home-dir content from a rebuilt image, remove the volume first:
 
 ```bash
-docker compose down
+docker compose -p dev-container down
 docker volume rm dev-container_home
 ./build
 ```

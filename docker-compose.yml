@@ -1,7 +1,7 @@
 services:
   dev-container:
-    container_name: dev-container
-    hostname: dev-container
+    container_name: ${INSTANCE:-dev-container}
+    hostname: ${INSTANCE:-dev-container}
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
@@ -11,7 +11,7 @@ services:
         DOTFILES_INSTALL_CMD: ${DOTFILES_INSTALL_CMD:-./install.sh}
     image: dev-container:latest
     ports:
-      - "127.0.0.1:2222:22"
+      - "127.0.0.1:${SSH_PORT:-2222}:22"
     environment:
       - SSH_AUTHORIZED_KEYS
       - TZ

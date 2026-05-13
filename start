@@ -3,9 +3,69 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if ! docker ps --format '{{.Names}}' | grep -q '^dev-container$'; then
-  echo "Starting dev-container..."
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT_DIR/.env"
+fi
+
+INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
+SSH_PORT="${SSH_PORT:-}"
+
+usage() {
+  echo "Usage: start [--instance <name>] [--ssh-port <port>]" >&2
+}
+
+validate_instance() {
+  if [[ ! "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "Error: instance must start with a lowercase letter or digit and contain only lowercase letters, digits, underscores, or hyphens" >&2
+    exit 1
+  fi
+}
+
+validate_port() {
+  if [[ -n "$SSH_PORT" && ! "$SSH_PORT" =~ ^[0-9]+$ ]]; then
+    echo "Error: SSH port must be numeric" >&2
+    exit 1
+  fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --instance)
+      if [[ -z "${2:-}" ]]; then
+        usage
+        exit 1
+      fi
+      INSTANCE="$2"
+      shift 2
+      ;;
+    --ssh-port)
+      if [[ -z "${2:-}" ]]; then
+        usage
+        exit 1
+      fi
+      SSH_PORT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+validate_instance
+validate_port
+
+cd "${SCRIPT_DIR}"
+
+container_id="$(env INSTANCE="$INSTANCE" SSH_PORT="$SSH_PORT" docker compose -p "$INSTANCE" ps -q dev-container 2>/dev/null || true)"
+if [[ -z "$container_id" || "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)" != "true" ]]; then
+  echo "Starting $INSTANCE..."
   export DOCKER_CLI_HINTS=false
-  cd "${SCRIPT_DIR}"
-  docker compose up -d
+  env INSTANCE="$INSTANCE" SSH_PORT="$SSH_PORT" docker compose -p "$INSTANCE" up -d
 fi

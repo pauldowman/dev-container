@@ -3,37 +3,89 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-case "${1:-}" in
-  --init)
-    if [ -f "$SCRIPT_DIR/.env" ]; then
-      # shellcheck source=/dev/null
-      source "$SCRIPT_DIR/.env"
-    fi
-    if [ -z "${CODE_DIR:-}" ]; then
-      echo "Error: CODE_DIR must be set in .env" >&2
-      exit 1
-    fi
-    code_dir="$CODE_DIR"
-    cat <<EOF
-_dev() {
-  _alternative \\
-    'args:subcommand:(list)' \\
-    'dirs:directory:_path_files -/ -W ${code_dir}'
-}
-compdef _dev dev
-EOF
-    exit 0
-    ;;
-  "")
-    echo "Usage: dev <session-name> | dev list" >&2
-    exit 1
-    ;;
-esac
-
 if [ -f "$SCRIPT_DIR/.env" ]; then
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/.env"
 fi
+
+INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
+init_completion=false
+positional=()
+
+usage() {
+  echo "Usage: dev [--instance <name>] <session-name> | dev [--instance <name>] list | dev --init" >&2
+}
+
+validate_instance() {
+  if [[ ! "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "Error: instance must start with a lowercase letter or digit and contain only lowercase letters, digits, underscores, or hyphens" >&2
+    exit 1
+  fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --instance)
+      if [[ -z "${2:-}" ]]; then
+        usage
+        exit 1
+      fi
+      INSTANCE="$2"
+      shift 2
+      ;;
+    --init)
+      init_completion=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      positional+=("$@")
+      break
+      ;;
+    -*)
+      usage
+      exit 1
+      ;;
+    *)
+      positional+=("$1")
+      shift
+      ;;
+  esac
+done
+
+validate_instance
+
+if [[ "$init_completion" == "true" ]]; then
+  if [[ "${#positional[@]}" -ne 0 ]]; then
+    usage
+    exit 1
+  fi
+  if [ -z "${CODE_DIR:-}" ]; then
+    echo "Error: CODE_DIR must be set in .env" >&2
+    exit 1
+  fi
+  code_dir="$CODE_DIR"
+  cat <<EOF
+_dev() {
+  _arguments \\
+    '--instance[connect to a named dev-container instance]:instance:' \\
+    '1:session:_alternative "args:subcommand:(list)" "dirs:directory:_path_files -/ -W ${code_dir}"'
+}
+compdef _dev dev
+EOF
+  exit 0
+fi
+
+if [[ "${#positional[@]}" -ne 1 ]]; then
+  usage
+  exit 1
+fi
+
+command="${positional[0]}"
 
 if [ -z "${CODE_DIR:-}" ]; then
   echo "Error: CODE_DIR must be set in .env" >&2
@@ -45,7 +97,19 @@ if [ -z "${SSH_AUTH_SOCK:-}" ]; then
   ssh-add
 fi
 
-ssh_opts=(-A -l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p 2222)
+port_output="$(env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" port dev-container 22 2>/dev/null || true)"
+if [[ -n "$port_output" ]]; then
+  ssh_port="${port_output##*:}"
+elif [[ -n "${SSH_PORT:-}" ]]; then
+  ssh_port="$SSH_PORT"
+elif [[ "$INSTANCE" == "dev-container" ]]; then
+  ssh_port="2222"
+else
+  echo "Error: could not find SSH port for instance '$INSTANCE'. Start it with ./start --instance $INSTANCE --ssh-port <port>." >&2
+  exit 1
+fi
+
+ssh_opts=(-A -l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p "$ssh_port")
 if [ -n "${FORWARD_PORTS:-}" ]; then
   IFS=',' read -ra ports <<< "$FORWARD_PORTS"
   for port in "${ports[@]}"; do
@@ -53,19 +117,19 @@ if [ -n "${FORWARD_PORTS:-}" ]; then
   done
 fi
 
-case "$1" in
+case "$command" in
   list)
     ssh "${ssh_opts[@]}" localhost tmux list-sessions
     ;;
   *)
-    echo "Connecting to ${USERNAME:-$USER}@localhost..."
-    session_name="${1//\//-}"
+    echo "Connecting to ${USERNAME:-$USER}@localhost:$ssh_port ($INSTANCE)..."
+    session_name="${command//\//-}"
     if [ -z "${GH_TOKEN:-}" ]; then
       echo "Warning: GH_TOKEN not set in .env, falling back to 'gh auth token' (which may have broader privileges than needed)" >&2
       GH_TOKEN="$(gh auth token)"
     fi
     ssh "${ssh_opts[@]}" -t localhost \
       GH_TOKEN="$GH_TOKEN" \
-      tmux new-session -A -s "$session_name" -c "$CODE_DIR/$1"
+      tmux new-session -A -s "$session_name" -c "$CODE_DIR/$command"
     ;;
 esac
