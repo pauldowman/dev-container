@@ -59,6 +59,7 @@ The `.env` file is gitignored. Available options:
 | `DOCKERFILE` | No | `Dockerfile` | Dockerfile to build (use `Dockerfile.gui` for GUI access) |
 | `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`) |
+| `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
 
 ## Customization
 
@@ -121,6 +122,32 @@ See the [Dockerfile](Dockerfile) for the full list. Highlights:
 ## Custom CA Certificates
 
 Place `.crt` files in `./data/certs/`. They are installed on container startup via `update-ca-certificates`.
+
+## GitHub token
+
+The `./dev` script forwards a GitHub token into the container as `$GH_TOKEN` so `gh` and other tools work without a separate login inside the container.
+
+By default it calls `gh auth token` on the host, which typically returns a broadly-scoped token. Prefer setting `GH_TOKEN` in `.env` to a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) limited to just the repos and permissions you need. If `GH_TOKEN` is unset, `./dev` prints a warning and falls back to `gh auth token`.
+
+Suggested permissions for a token that can push, work with PRs and issues, manage Projects v2, and debug CI:
+
+**Repository permissions:**
+
+| Permission | Level | Covers |
+|---|---|---|
+| Metadata | Read | Mandatory for all fine-grained tokens |
+| Contents | Read & write | `git push`, reading files via API |
+| Pull requests | Read & write | View / open / edit / comment on PRs |
+| Issues | Read & write | View / open / edit / comment on issues |
+| Actions | Read | Workflow runs, jobs, logs — used to debug failing CI |
+| Commit statuses | Read | Only needed for non-Actions CI (CircleCI, etc.) |
+| Workflows | Read & write | Only needed if pushing changes to `.github/workflows/*.yml` |
+
+**Organization or Account permissions** (depending on where your Projects v2 board lives):
+
+| Permission | Level | Covers |
+|---|---|---|
+| Projects | Read & write | Query and update Projects v2 boards |
 
 ## Git Commit Signing
 
