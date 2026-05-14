@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 data/
 docker-compose.override.yml
 custom-install-user.sh

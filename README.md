@@ -64,9 +64,21 @@ DEV_CONTAINER_INSTANCE=work SSH_PORT=2223 ./start
 DEV_CONTAINER_INSTANCE=work dev projectname
 ```
 
+For per-instance configuration, create `.env.<instance>`. The scripts load `.env` first for shared defaults, then load `.env.<instance>` for the selected instance if it exists. Explicit CLI flags, such as `--instance` and `--ssh-port`, take precedence.
+
+```bash
+# .env
+USERNAME=paul
+CODE_DIR=/home/paul/code
+
+# .env.work
+SSH_PORT=2223
+FORWARD_PORTS=3000,5173
+```
+
 ## Configuration
 
-The `.env` file is gitignored. Available options:
+The `.env` and `.env.<instance>` files are gitignored. Available options:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|

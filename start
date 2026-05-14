@@ -3,13 +3,13 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if [ -f "$SCRIPT_DIR/.env" ]; then
-  # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/.env"
-fi
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/env.sh"
+load_env_file "$SCRIPT_DIR/.env"
 
 INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
 SSH_PORT="${SSH_PORT:-}"
+SSH_PORT_ARG=""
 
 usage() {
   echo "Usage: start [--instance <name>] [--ssh-port <port>]" >&2
@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
         usage
         exit 1
       fi
-      SSH_PORT="$2"
+      SSH_PORT_ARG="$2"
       shift 2
       ;;
     -h|--help)
@@ -59,6 +59,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_instance
+load_env_file "$SCRIPT_DIR/.env.$INSTANCE"
+
+if [[ -n "$SSH_PORT_ARG" ]]; then
+  SSH_PORT="$SSH_PORT_ARG"
+else
+  SSH_PORT="${SSH_PORT:-}"
+fi
+
 validate_port
 
 cd "${SCRIPT_DIR}"

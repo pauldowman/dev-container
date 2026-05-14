@@ -3,10 +3,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if [ -f "$SCRIPT_DIR/.env" ]; then
-  # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/.env"
-fi
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/env.sh"
+load_env_file "$SCRIPT_DIR/.env"
 
 INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
 build_args=()
@@ -44,6 +43,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_instance
+load_env_file "$SCRIPT_DIR/.env.$INSTANCE"
 
 cd "${SCRIPT_DIR}"
 env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" down --remove-orphans

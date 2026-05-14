@@ -32,7 +32,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 DOCKERFILE=Dockerfile.gui ./build
 ```
 
-Required env vars (typically in `.env`):
+Required env vars (typically in `.env`, with per-instance overrides in `.env.<instance>`):
 - `USERNAME` — the container user (should match host username)
 - `SSH_AUTHORIZED_KEYS` — newline-separated public keys; first key is also used as the user's public key
 - `CODE_DIR` — absolute path to code directory (e.g. `/Users/paul/code`), mounted at the same path inside the container; passed as `$CODE_DIR` so Docker-in-Docker volume paths work

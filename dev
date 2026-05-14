@@ -3,10 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if [ -f "$SCRIPT_DIR/.env" ]; then
-  # shellcheck source=/dev/null
-  source "$SCRIPT_DIR/.env"
-fi
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/scripts/env.sh"
+load_env_file "$SCRIPT_DIR/.env"
 
 INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
 init_completion=false
@@ -58,6 +57,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_instance
+load_env_file "$SCRIPT_DIR/.env.$INSTANCE"
 
 if [[ "$init_completion" == "true" ]]; then
   if [[ "${#positional[@]}" -ne 0 ]]; then
