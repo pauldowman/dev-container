@@ -91,3 +91,7 @@ dev_output="$("$TMP_DIR/dev" --instance work project)"
 assert_contains "$dev_output" "Connecting to tester@localhost:2223 (work)..."
 assert_contains "$dev_output" "GH_TOKEN=work-token"
 assert_contains "$dev_output" "-c /work/code/project"
+
+completion_output="$("$TMP_DIR/dev" --instance work --init)"
+assert_contains "$completion_output" "'1:session: _alternative"
+assert_contains "$completion_output" "\"dirs:directory: _path_files -/ -W /work/code\""

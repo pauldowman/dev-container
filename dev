@@ -73,7 +73,7 @@ if [[ "$init_completion" == "true" ]]; then
 _dev() {
   _arguments \\
     '--instance[connect to a named dev-container instance]:instance:' \\
-    '1:session:_alternative "args:subcommand:(list)" "dirs:directory:_path_files -/ -W ${code_dir}"'
+    '1:session: _alternative "args:subcommand:(list)" "dirs:directory: _path_files -/ -W ${code_dir}"'
 }
 compdef _dev dev
 EOF
