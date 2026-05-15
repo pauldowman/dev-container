@@ -93,7 +93,7 @@ fi
 
 case "$1" in
   list)
-    ssh "${ssh_opts[@]}" localhost tmux list-sessions
+    ssh "${ssh_opts[@]}" localhost 'tmux list-sessions 2>/dev/null || echo "No active tmux sessions"'
     ;;
   *)
     echo "Connecting to ${USERNAME:-$USER}@localhost..."

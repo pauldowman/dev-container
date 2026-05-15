@@ -21,6 +21,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 - `scripts/start.sh` — container entrypoint: writes SSH authorized_keys, sets up Docker socket access, starts sshd
 - `scripts/start-gui.sh` — GUI entrypoint: same as start.sh but also starts xrdp
 - `build` — shell script to rebuild and restart the container via docker compose
+- Do not bind-mount `/etc/localtime` in compose. Under WSL/Docker Desktop it can resolve to a Docker Desktop bind-mount shim and fail container startup with "not a directory"; use `TZ` instead.
 
 ## Build & run
 
