@@ -1,0 +1,11 @@
+#!/bin/bash
+# Copy this file to custom-install-root.sh to run custom build-time setup as root.
+# Runs during the image build as root, before the container user is created (optional).
+# custom-install-root.sh is gitignored so changes are local only.
+#
+# Use this for system-wide installs that need root: apt packages, debs, etc.
+#
+# Example: install Google Chrome
+#   curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb
+#   apt-get install -y /tmp/chrome.deb
+#   rm /tmp/chrome.deb

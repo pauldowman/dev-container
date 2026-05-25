@@ -1,0 +1,17 @@
+#!/bin/bash
+# Copy this file to custom-install-user.sh to run custom build-time setup as the container user.
+# Runs during the image build as the container user, after dotfiles and tools are installed (optional).
+# custom-install-user.sh is gitignored so changes are local only.
+#
+# Use this for personal tools, shell plugins, Claude plugins, or configuration.
+#
+# Example: install mise (version manager)
+#   curl https://mise.run | sh
+#   echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
+#
+# Example: install Claude Code plugins
+#   $HOME/.local/bin/claude plugin marketplace add austintgriffith/ethskills
+#   $HOME/.local/bin/claude plugin install ethskills
+#
+#   $HOME/.local/bin/claude plugin marketplace add openai/codex-plugin-cc
+#   $HOME/.local/bin/claude plugin install codex@openai-codex
