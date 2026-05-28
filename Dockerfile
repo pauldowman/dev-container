@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     && echo "deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list \
     && curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" > /etc/apt/sources.list.d/kubernetes.list \
-    && apt-get update && apt-get install -y glow docker-ce-cli docker-compose-plugin docker-buildx-plugin google-cloud-cli kubectl \
+    && apt-get update && apt-get install -y glow docker-ce-cli docker-compose-plugin docker-buildx-plugin google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin kubectl \
     && apt-get clean
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
