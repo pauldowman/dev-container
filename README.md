@@ -155,6 +155,7 @@ See the [Dockerfile](Dockerfile) for the full list. Highlights:
 - **Languages:** Go, Rust, Node.js, Python
 - **Language servers:** gopls, rust-analyzer, typescript-language-server, pyright, solidity-language-server, bash-language-server
 - **CLI:** git, gh, docker, gcloud, neovim, tmux, fzf, ripgrep, just, direnv, mise, glow, and others
+- **Kubernetes & cloud:** kubectl, kubie, gke-gcloud-auth-plugin, gcx (Grafana CLI)
 - **Blockchain:** Foundry (forge, cast, anvil, chisel)
 - **AI:** Claude Code, OpenAI Codex
 
