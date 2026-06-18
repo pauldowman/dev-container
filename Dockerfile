@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y \
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
+# gcx (Grafana CLI) https://github.com/grafana/gcx
+RUN curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
+
 RUN ssh-keygen -A && \
     echo "PasswordAuthentication no\nAllowAgentForwarding yes\nAllowTcpForwarding yes" \
     > /etc/ssh/sshd_config.d/container.conf
