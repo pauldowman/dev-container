@@ -19,6 +19,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 - `Dockerfile.gui` — extends main image with XFCE4 + xrdp for GUI access
 - `docker-compose.yml` — runs the container; reads `USERNAME`, `SSH_AUTHORIZED_KEYS`, and `CODE_DIR` from env
 - `scripts/start.sh` — container entrypoint: writes SSH authorized_keys, sets up Docker socket access, starts sshd
+- `scripts/docker-shim` — installed as `/usr/local/bin/docker` (shadows the real `/usr/bin/docker`). **macOS-host only:** on a Mac, the `/Users -> /home` symlink means path-canonicalizing tools (notably `cargo-prove --docker`) pass an unshared `/home/...` bind source that Docker Desktop rejects. The shim rewrites bind-mount sources to the shared host path, derived from `/proc/self/mountinfo`. No-op on Linux hosts (no Docker Desktop shared mounts).
 - `scripts/start-gui.sh` — GUI entrypoint: same as start.sh but also starts xrdp
 - `build` — shell script to rebuild and restart the container via docker compose
 

@@ -132,6 +132,14 @@ Connect with any RDP client to `localhost:3389`. The desktop is configured with 
 
 `CODE_DIR` is mounted at the same path inside the container. On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code` resolves correctly regardless of the host path.
 
+### Docker-outside-of-docker bind mounts (macOS only)
+
+This applies only when the host is **macOS**; on a Linux host it has no effect.
+
+The host Docker socket is mounted, so `docker` commands inside the container run against the host's Docker daemon. On a Mac, Docker Desktop resolves bind-mount *sources* against the **macOS host** filesystem and only shares certain roots (e.g. `/Users`). But because of the Mac-only `/Users -> /home` symlink above, the repo's *real* path inside the container is `/home/$USERNAME/...`. Tools that canonicalize a path before mounting it — notably `cargo-prove prove build --docker` — then pass the unshared `/home/...` source, and Docker Desktop denies the mount (`path ... is not shared from the host`).
+
+To fix this transparently, `scripts/docker-shim` is installed as `/usr/local/bin/docker` (which precedes the real `/usr/bin/docker` on `PATH`). It derives the container-path → host-path map from `/proc/self/mountinfo` and rewrites only bind-mount *sources* to the shared host path before exec'ing the real docker. On a Linux host there is no Docker Desktop and nothing to remap, so the shim is a transparent pass-through. It never touches container-target paths, named volumes, or non-mount arguments.
+
 The home directory (`/home/$USERNAME`) is backed by a named Docker volume (`dev-container_home` for the default instance), so shell history, caches, configs, and runtime-installed tools persist across container restarts and rebuilds. On first run, the volume is seeded from the image's home directory (dotfiles, etc.). Subsequent rebuilds will *not* overwrite the volume — to pick up new home-dir content from a rebuilt image, remove the volume first:
 
 ```bash

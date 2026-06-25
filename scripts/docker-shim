@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# docker shim for docker-outside-of-docker -- only needed when the host is macOS.
+#
+# On a macOS host, Docker Desktop resolves bind-mount SOURCES against the macOS HOST
+# filesystem and only shares certain host roots (e.g. /Users). This container symlinks
+# `/Users -> /home` (a Mac-only fixup), so the host's /Users/me/code is mounted at the
+# REAL path /home/me/code. Tools that canonicalize a path before mounting it (notably
+# `cargo-prove prove build --docker`, see sp1 crates/build/src/command/docker.rs) then
+# pass the unshared /home/... source and Docker Desktop denies the mount.
+#
+# Fix: derive the container-path -> host-path map from /proc/self/mountinfo (Docker
+# Desktop marks shared mounts with a `/run/host_mark/<Share>` source) and rewrite only
+# the SOURCE of bind mounts accordingly, then exec the real docker.
+#
+# On a Linux host there is no Docker Desktop and no `host_mark` mounts, so the map is
+# empty and this shim is a transparent pass-through -- it changes nothing. Container-
+# target paths, named volumes, and non-mount args are never touched. No hardcoded
+# usernames or paths. Handles `-v`/`--volume`; not `--mount source=` (unused by cargo-prove).
+
+real_docker=/usr/bin/docker
+
+# Unescape octal sequences mountinfo uses for special chars (\040 space, etc).
+unescape() {
+  local s=$1
+  s=${s//\\040/ }
+  s=${s//\\011/$'\t'}
+  s=${s//\\012/$'\n'}
+  s=${s//\\134/\\}
+  printf '%s' "$s"
+}
+
+# Build the remap table: lines of "<container_mountpoint>\t<host_path>".
+mountmap=$(
+  while IFS= read -r line; do
+    left=${line%% - *}
+    right=${line#* - }
+    read -ra L <<<"$left"
+    read -ra R <<<"$right"
+    root=${L[3]} mp=${L[4]} src=${R[1]}
+    case $src in
+      */host_mark/*) ;;          # Docker Desktop shared mount
+      *) continue ;;             # everything else (incl. all native-Linux mounts)
+    esac
+    share=${src##*/}             # e.g. /run/host_mark/Users -> Users
+    root=$(unescape "$root")
+    mp=$(unescape "$mp")
+    [ "$root" = "/" ] && root=""
+    printf '%s\t/%s%s\n' "$mp" "$share" "$root"
+  done </proc/self/mountinfo
+)
+
+# Rewrite a bind spec "SRC:DST[:opts]" -> host SRC, longest mountpoint match wins.
+rewrite_src() {
+  local spec=$1 src rest mp host best_mp best_host
+  case $spec in
+    /*:*) src=${spec%%:*} rest=${spec#*:} ;;
+    *) printf '%s' "$spec"; return ;;
+  esac
+  while IFS=$'\t' read -r mp host; do
+    [ -n "$mp" ] || continue
+    if [ "$src" = "$mp" ] || [ "${src#"$mp"/}" != "$src" ]; then
+      if [ ${#mp} -gt ${#best_mp} ]; then best_mp=$mp best_host=$host; fi
+    fi
+  done <<<"$mountmap"
+  if [ -n "$best_mp" ]; then
+    printf '%s:%s' "$best_host${src#"$best_mp"}" "$rest"
+  else
+    printf '%s' "$spec"
+  fi
+}
+
+args=()
+prev=
+for a in "$@"; do
+  case $prev in
+    -v | --volume) a=$(rewrite_src "$a") ;;
+  esac
+  case $a in
+    -v=*) a="-v=$(rewrite_src "${a#-v=}")" ;;
+    --volume=*) a="--volume=$(rewrite_src "${a#--volume=}")" ;;
+  esac
+  args+=("$a")
+  prev=$a
+done
+
+exec "$real_docker" "${args[@]}"

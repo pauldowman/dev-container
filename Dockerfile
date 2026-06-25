@@ -149,5 +149,12 @@ RUN cargo install kubie
 RUN --mount=type=bind,source=.,target=/mnt/src \
     [ -f /mnt/src/custom-install-user.sh ] && bash /mnt/src/custom-install-user.sh || true
 
+# docker shim (macOS-host only): on a Mac the /Users -> /home symlink makes
+# path-canonicalizing tools like `cargo-prove --docker` pass an unshared /home/...
+# bind source that Docker Desktop rejects; the shim rewrites it to the shared host
+# path. No-op on Linux hosts. /usr/local/bin precedes /usr/bin on PATH, so this
+# shadows the real docker (which it execs at /usr/bin/docker).
+COPY scripts/docker-shim /usr/local/bin/docker
+
 COPY scripts/start.sh /usr/local/bin/start.sh
 CMD ["/usr/local/bin/start.sh"]
