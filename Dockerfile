@@ -3,7 +3,7 @@ FROM golang:latest AS golang
 FROM ghcr.io/foundry-rs/foundry:latest AS foundry
 FROM node:latest AS node
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS development
 
 RUN apt-get update && apt-get install -y \
     git curl sudo zsh fzf ripgrep fd-find tmux \
@@ -186,3 +186,56 @@ COPY scripts/docker-shim /usr/local/bin/docker
 
 COPY scripts/start.sh /usr/local/bin/start.sh
 CMD ["/usr/local/bin/start.sh"]
+
+FROM development AS gui
+
+ARG USERNAME
+USER root
+
+RUN echo "$USERNAME:$USERNAME" | chpasswd
+
+RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 fonts-liberation \
+    gnome-keyring libsecret-tools \
+    && adduser xrdp ssl-cert \
+    && printf '#!/bin/sh\nexec startxfce4\n' > /etc/xrdp/startwm.sh \
+    && apt-get clean \
+    && rm -rf /usr/share/backgrounds/xfce/*
+
+# Unlock the GNOME login keyring at xrdp login. Without this, apps that use the
+# Secret Service (e.g. LibreSafe storing its vault pepper) hit a locked login
+# keyring and prompt for a password that was never set. pam_gnome_keyring creates
+# and unlocks the login keyring with the login password (the username, set by the
+# chpasswd above), so it auto-unlocks every session with no prompt.
+RUN printf 'auth     optional  pam_gnome_keyring.so\nsession  optional  pam_gnome_keyring.so auto_start\n' \
+    >> /etc/pam.d/xrdp-sesman
+
+COPY scripts/start-gui.sh /usr/local/bin/start-gui.sh
+
+USER ${USERNAME}
+RUN mkdir -p ~/.config/xfce4/xfconf/xfce-perchannel-xml && \
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n\
+<channel name="xsettings" version="1.0">\n\
+  <property name="Net" type="empty">\n\
+    <property name="ThemeName" type="string" value="Adwaita-dark"/>\n\
+    <property name="IconThemeName" type="string" value="hicolor"/>\n\
+  </property>\n\
+</channel>\n' > ~/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml && \
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n\
+<channel name="xfwm4" version="1.0">\n\
+  <property name="general" type="empty">\n\
+    <property name="workspace_count" type="int" value="1"/>\n\
+    <property name="workspace_names" type="array">\n\
+      <value type="string" value="Workspace 1"/>\n\
+    </property>\n\
+  </property>\n\
+</channel>\n' > ~/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
+
+CMD ["/usr/local/bin/start-gui.sh"]
+
+FROM development AS base-target-test
+RUN ! command -v xrdp >/dev/null
+
+FROM gui AS gui-target-test
+RUN command -v xrdp >/dev/null
+
+FROM development AS base
