@@ -78,6 +78,7 @@ RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
     echo 'eval "$(mise activate zsh)"' >> /etc/zsh/zshrc && \
     echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc && \
     echo 'export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"' >> /etc/zsh/zshrc
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /etc/zsh/zshenv
 
 ARG USERNAME
 ARG DOTFILES_REPO=""
@@ -156,10 +157,11 @@ RUN npm install -g typescript typescript-language-server \
         tree-sitter-cli
 USER $USERNAME
 
-# Codex CLI: user-scope (--prefix puts the binary in ~/.local/bin, already on
-# PATH). Agent CLIs must be user-installed because they update themselves in
-# place; root-owned system copies would break their updaters.
-RUN npm install -g --prefix "$HOME/.local" @openai/codex@latest
+# Codex CLI: the official standalone installer keeps the command and package
+# user-owned so in-place updates do not require access to /usr/local.
+RUN curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh && \
+    PATH="$HOME/.local/bin:$PATH" CODEX_NON_INTERACTIVE=1 CODEX_INSTALL_DIR="$HOME/.local/bin" sh /tmp/install-codex.sh && \
+    rm /tmp/install-codex.sh
 
 # OpenCode CLI
 RUN curl -fsSL https://opencode.ai/install | bash

@@ -12,7 +12,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 - Host Docker socket is mounted for running Docker commands inside the container
 - Installs dotfiles from https://github.com/pauldowman/dotfiles
 - Includes neovim, Claude CLI, tmux, zsh, fzf, ripgrep, fd (Ubuntu's `fd-find`, symlinked to `fd` in `/usr/local/bin`), mise, and dev tools
-- Agent CLIs (claude, opencode, codex, omp) are installed user-scope in the image because they self-update in place during a container's lifetime; runtime updates disappear on recreation unless exact files are deliberately selected through `data/home`. Other npm globals are system-scope so rebuilds refresh them.
+- Agent CLIs are installed user-scope in the image because they self-update in place during a container's lifetime; runtime updates disappear on recreation unless exact files are deliberately selected through `data/home`. Codex uses OpenAI's standalone installer, with `~/.local/bin/codex` targeting its user-writable package under `~/.codex/packages/standalone`; do not advertise `auth.json` as persistent without an authenticated rewrite test. Other npm globals remain system-scope under `/usr/local` so rebuilds refresh them.
 
 ## Key files
 

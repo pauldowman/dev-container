@@ -188,6 +188,8 @@ See the [Dockerfile](Dockerfile) for the full list. Highlights:
 - **Blockchain:** Foundry (forge, cast, anvil, chisel)
 - **AI:** Claude Code, OpenAI Codex
 
+Codex is installed with OpenAI's standalone installer as the container user. The command is `~/.local/bin/codex`, its user-writable package is under `~/.codex/packages/standalone`, and `/etc/zsh/zshenv` exposes the command to interactive and non-interactive zsh sessions without changing npm's `/usr/local` global prefix. Individual Codex-adjacent files can coexist with that package through the file-level `data/home` overlay, but `auth.json` is not documented as safely persistable because no authenticated rewrite test proves Codex preserves its symlink.
+
 ## Custom CA Certificates
 
 Place `.crt` files in `./data/certs/`. They are installed on container startup via `update-ca-certificates`.
