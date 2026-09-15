@@ -56,7 +56,7 @@ dev --instance work projectname
 dev --instance work list
 ```
 
-The instance name is used as the Docker Compose project name, container name, and hostname. Each instance gets its own Docker-managed home volume, such as `work_home`, while sharing the same image and `CODE_DIR` mount.
+The instance name is used as the Docker Compose project name, container name, hostname, and part of the image tag. Image tags include both the instance and target, such as `dev-container:work-base` or `dev-container:work-gui`, so variants cannot overwrite one another. Each instance gets its own Docker-managed home volume, such as `work_home`, while sharing the same `CODE_DIR` mount.
 
 You can also set defaults with environment variables:
 

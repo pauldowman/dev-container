@@ -19,7 +19,7 @@ assert_contains() {
 }
 
 render_compose() {
-  env -u BUILD_TARGET -u DOCKERFILE \
+  env -u BUILD_TARGET -u DOCKERFILE -u INSTANCE \
     CODE_DIR=/tmp/code \
     DOTFILES_INSTALL_CMD="${DOTFILES_INSTALL_CMD-}" \
     DOTFILES_REPO="${DOTFILES_REPO-}" \
@@ -32,9 +32,20 @@ render_compose() {
 default_config="$(render_compose)"
 assert_contains "$default_config" "dockerfile: Dockerfile"
 assert_contains "$default_config" "target: base"
+assert_contains "$default_config" "image: dev-container:dev-container-base"
 
 gui_config="$(render_compose BUILD_TARGET=gui)"
 assert_contains "$gui_config" "target: gui"
+assert_contains "$gui_config" "image: dev-container:dev-container-gui"
+
+work_base_config="$(render_compose INSTANCE=work BUILD_TARGET=base)"
+assert_contains "$work_base_config" "image: dev-container:work-base"
+
+work_gui_config="$(render_compose INSTANCE=work BUILD_TARGET=gui)"
+assert_contains "$work_gui_config" "image: dev-container:work-gui"
+
+personal_base_config="$(render_compose INSTANCE=personal BUILD_TARGET=base)"
+assert_contains "$personal_base_config" "image: dev-container:personal-base"
 
 argument_config="$(USERNAME=alice DOTFILES_REPO=https://example.test/dotfiles.git DOTFILES_INSTALL_CMD=setup.sh render_compose)"
 assert_contains "$argument_config" "USERNAME: alice"

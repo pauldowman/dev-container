@@ -10,7 +10,7 @@ services:
         USERNAME: ${USERNAME:-$USER}
         DOTFILES_REPO: ${DOTFILES_REPO:-}
         DOTFILES_INSTALL_CMD: ${DOTFILES_INSTALL_CMD:-./install.sh}
-    image: dev-container:latest
+    image: dev-container:${INSTANCE:-dev-container}-${BUILD_TARGET:-base}
     ports:
       - "127.0.0.1:${SSH_PORT:-2222}:22"
     environment:

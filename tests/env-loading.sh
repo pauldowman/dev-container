@@ -63,6 +63,7 @@ cat > "$TMP_DIR/.env.work" <<'ENV'
 CODE_DIR=/work/code
 BUILD_TARGET=gui
 GH_TOKEN=work-token
+INSTANCE=bad/name
 SSH_PORT=2223
 ENV
 
@@ -121,6 +122,29 @@ if legacy_start_output="$("$TMP_DIR/start" --instance legacy 2>&1)"; then
   exit 1
 fi
 assert_contains "$legacy_start_output" "DOCKERFILE is obsolete"
+
+valid_long_instance="$(printf 'a%.0s' {1..123})"
+invalid_long_instance="${valid_long_instance}a"
+"$TMP_DIR/build" --instance "$valid_long_instance" >/dev/null
+"$TMP_DIR/start" --instance "$valid_long_instance" >/dev/null
+
+if long_build_output="$("$TMP_DIR/build" --instance "$invalid_long_instance" 2>&1)"; then
+  echo "Expected build to reject an instance longer than 123 characters" >&2
+  exit 1
+fi
+assert_contains "$long_build_output" "instance must be at most 123 characters"
+
+if long_start_output="$("$TMP_DIR/start" --instance "$invalid_long_instance" 2>&1)"; then
+  echo "Expected start to reject an instance longer than 123 characters" >&2
+  exit 1
+fi
+assert_contains "$long_start_output" "instance must be at most 123 characters"
+
+if long_dev_output="$("$TMP_DIR/dev" --instance "$invalid_long_instance" project 2>&1)"; then
+  echo "Expected dev to reject an instance longer than 123 characters" >&2
+  exit 1
+fi
+assert_contains "$long_dev_output" "instance must be at most 123 characters"
 
 dev_output="$("$TMP_DIR/dev" --instance work project)"
 assert_contains "$dev_output" "Connecting to tester@localhost:2223 (work)..."

@@ -19,6 +19,10 @@ validate_instance() {
     echo "Error: instance must start with a lowercase letter or digit and contain only lowercase letters, digits, underscores, or hyphens" >&2
     exit 1
   fi
+  if (( ${#INSTANCE} > 123 )); then
+    echo "Error: instance must be at most 123 characters" >&2
+    exit 1
+  fi
 }
 
 validate_build_configuration() {
@@ -59,7 +63,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 validate_instance
+selected_instance="$INSTANCE"
 load_env_file "$SCRIPT_DIR/.env.$INSTANCE"
+INSTANCE="$selected_instance"
 validate_build_configuration
 
 cd "${SCRIPT_DIR}"
