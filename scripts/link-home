@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  echo "link-home: $*" >&2
+  exit 1
+}
+
+if (( $# != 2 )); then
+  fail "usage: link-home SOURCE_ROOT DESTINATION_ROOT"
+fi
+
+trim_trailing_slashes() {
+  local path="$1"
+
+  while [[ "$path" != "/" && "$path" == */ ]]; do
+    path="${path%/}"
+  done
+  printf '%s\n' "$path"
+}
+
+source_argument="$(trim_trailing_slashes "$1")"
+destination_argument="$(trim_trailing_slashes "$2")"
+
+[[ -d "$source_argument" ]] || fail "source root is not a directory: $source_argument"
+[[ -d "$destination_argument" ]] || fail "destination root is not a directory: $destination_argument"
+[[ ! -L "$destination_argument" ]] || fail "destination root must not be a symlink: $destination_argument"
+command -v mountpoint >/dev/null || fail "mountpoint command is required"
+
+source_root="$(realpath -e -- "$source_argument")"
+destination_root="$(realpath -e -- "$destination_argument")"
+
+is_same_or_descendant() {
+  local path="$1"
+  local possible_parent="$2"
+
+  [[ "$path" == "$possible_parent" ]] && return 0
+  [[ "$possible_parent" == "/" ]] && return 0
+  [[ "$path" == "$possible_parent/"* ]]
+}
+
+if is_same_or_descendant "$source_root" "$destination_root" || is_same_or_descendant "$destination_root" "$source_root"; then
+  fail "source and destination roots must not overlap"
+fi
+
+is_runtime_managed_path() {
+  case "$1" in
+    .ssh/authorized_keys|.ssh/authorized_keys/*|.ssh/id_ed25519.pub|.ssh/id_ed25519.pub/*|.ssh/agent.sock|.ssh/agent.sock/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+ensure_destination_parent() {
+  local relative_path="$1"
+  local parent_relative current component remaining
+
+  if [[ "$relative_path" != */* ]]; then
+    return
+  fi
+
+  parent_relative="${relative_path%/*}"
+  current="$destination_root"
+  remaining="$parent_relative"
+
+  while [[ -n "$remaining" ]]; do
+    component="${remaining%%/*}"
+    if [[ "$remaining" == */* ]]; then
+      remaining="${remaining#*/}"
+    else
+      remaining=""
+    fi
+
+    current="$current/$component"
+    [[ ! -L "$current" ]] || fail "destination parent is a symlink: $current"
+
+    if [[ -e "$current" ]]; then
+      [[ -d "$current" ]] || fail "destination parent is not a directory: $current"
+    else
+      mkdir -- "$current"
+    fi
+
+    if mountpoint -q -- "$current"; then
+      fail "destination parent is a mountpoint: $current"
+    fi
+  done
+}
+
+source_list="$(mktemp)"
+trap 'rm -f "$source_list"' EXIT
+if ! find "$source_root" \( -type f -o -type l \) -print0 > "$source_list"; then
+  fail "could not enumerate source root: $source_root"
+fi
+
+while IFS= read -r -d '' source_path; do
+  relative_path="${source_path#"$source_root"/}"
+  is_runtime_managed_path "$relative_path" && fail "refusing runtime-managed destination: $relative_path"
+
+  ensure_destination_parent "$relative_path"
+  destination_path="$destination_root/$relative_path"
+
+  if [[ -L "$destination_path" || -f "$destination_path" ]]; then
+    rm -f -- "$destination_path"
+  elif [[ -e "$destination_path" ]]; then
+    fail "destination exists with an unsupported type: $destination_path"
+  fi
+
+  ln -s -- "$source_path" "$destination_path"
+done < "$source_list"
