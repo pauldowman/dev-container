@@ -11,7 +11,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 - Code directory is volume-mounted at the same path inside and outside the container; host path (`CODE_DIR`) is passed into the container as `$CODE_DIR` for Docker socket compatibility
 - Host Docker socket is mounted for running Docker commands inside the container
 - Installs dotfiles from https://github.com/pauldowman/dotfiles
-- Includes neovim, Claude CLI, tmux, zsh, fzf, ripgrep, mise, and dev tools
+- Includes neovim, Claude CLI, tmux, zsh, fzf, ripgrep, fd (Ubuntu's `fd-find`, symlinked to `fd` in `/usr/local/bin`), mise, and dev tools
 - Agent CLIs (claude, opencode, codex, omp) are installed user-scope (in the home volume) because they self-update in place; a root-owned system copy would break their updaters. Other npm globals are system-scope so rebuilds refresh them.
 
 ## Key files
