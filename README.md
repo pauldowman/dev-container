@@ -56,7 +56,7 @@ dev --instance work projectname
 dev --instance work list
 ```
 
-The instance name is used as the Docker Compose project name, container name, hostname, and part of the image tag. Image tags include both the instance and target, such as `dev-container:work-base` or `dev-container:work-gui`, so variants cannot overwrite one another. Each instance gets its own Docker-managed home volume, such as `work_home`, while sharing the same `CODE_DIR` mount.
+The instance name is used as the Docker Compose project name, container name, hostname, and part of the image tag. Image tags include both the instance and target, such as `dev-container:work-base` or `dev-container:work-gui`, so variants cannot overwrite one another. Instances have separate ephemeral home directories while sharing the same `CODE_DIR` mount and the same explicitly selected files under this repository's `data/home` directory.
 
 You can also set defaults with environment variables:
 
@@ -77,11 +77,11 @@ SSH_PORT=2223
 FORWARD_PORTS=3000,5173
 ```
 
-## Session Persistence
+## tmux Session State
 
-tmux sessions don't survive a container rebuild, but their layout does: [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) and [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) are baked into the image and loaded from `/etc/tmux.conf`, so they apply only inside the container and don't require any plugin lines in your own tmux config (dotfiles stay portable to other machines).
+[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) and [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) are baked into the image and loaded from `/etc/tmux.conf`, so they apply only inside the container and don't require plugin lines in your own tmux config. Continuum auto-saves every 15 minutes while a client is attached and auto-restores when the tmux server starts; manual save is `prefix + Ctrl-s`, and manual restore is `prefix + Ctrl-r`.
 
-Continuum auto-saves every 15 minutes while a client is attached, and auto-restores when the tmux server starts — so after a rebuild, the first `dev <session-name>` brings back all saved sessions with their windows, panes, layouts, and working directories (the session just created by `dev` keeps its fresh shell window alongside its restored ones). Running programs and shell history are not restored. Manual save is `prefix + Ctrl-s`, manual restore is `prefix + Ctrl-r`. Save files live under the home directory, which is a persistent volume.
+The saved layouts remain available across process and container restarts, but they are discarded when the container is recreated unless their exact files are selected through `data/home`. tmux-resurrect creates newly named state files, and new files are not automatically persistent under the file-level overlay, so this setup does not promise tmux layout restoration after a rebuild. Running programs and shell history are never restored by tmux-resurrect.
 
 ## Configuration
 
@@ -93,7 +93,7 @@ The `.env` and `.env.<instance>` files are gitignored. Available options:
 | `USERNAME` | No | `$USER` | Username inside the container |
 | `DOTFILES_REPO` | No | — | Git repo URL to clone and install as dotfiles |
 | `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
-| `CODE_DIR` | Yes | — | Absolute host path to code directory (e.g. `/Users/paul/code`); mounted at the same path inside the container |
+| `CODE_DIR` | Yes | — | Existing canonical absolute host path containing this repository (e.g. `/Users/paul/code`); symlink aliases are rejected because it is mounted unchanged inside the container |
 | `BUILD_TARGET` | No | `base` | Validated image target: `base` or `gui`; use `./build` and `./start` rather than invoking Compose directly |
 | `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`) |
@@ -113,7 +113,7 @@ Two optional scripts can be created locally (both are gitignored):
 
 **`custom-install-root.sh`** — runs as root after the toolchains are installed, before the user is created. Use for extra `apt` packages or system-level config.
 
-**`custom-install-user.sh`** — runs as the container user after dotfiles are installed. Use for personal tools, shell plugins, or user-level config. It runs at image build time, so writes under `$HOME` only reach a newly created `home` volume — rebuilding against an existing one won't re-apply them — and there are no GitHub credentials available. Anything that needs a token, or that must re-apply on every rebuild, has to be run by hand inside the container instead.
+**`custom-install-user.sh`** — runs as the container user after dotfiles are installed. Use for personal tools, shell plugins, or user-level config. Its writes under `$HOME` are captured in the image and appear in each newly created container. Build time has no GitHub credentials, so anything pulling from a private repository cannot run here; setup requiring credentials belongs in a script run by hand inside the container, where its results remain ephemeral unless their exact files are selected through `data/home`.
 
 Example `custom-install-user.sh`:
 
@@ -138,11 +138,28 @@ BUILD_TARGET=gui
 ./start
 ```
 
-Connect with any RDP client to `localhost:3389`. The desktop is configured with dark mode and a single workspace by default.
+Connect with any RDP client to `localhost:3389`. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless exact files are selected under `data/home`; because keyring applications may replace files atomically, do not assume selecting them is reliable without application-specific testing. If a stale selected keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
 
 ## Directory Mapping
 
 `CODE_DIR` is mounted at the same path inside the container. On Mac, `/Users` is symlinked to `/home` inside the container so that `~/code` resolves correctly regardless of the host path.
+
+### Selective Home Persistence
+
+The container home has no Docker volume. It survives an ordinary process or container restart, but a container recreation starts again from the image and discards home changes that were not explicitly selected. Code survives because `CODE_DIR` is host-mounted.
+
+The only selective home-persistence source is the gitignored `data/home` directory in this repository. On startup, every regular file or source symlink below it is linked into the same home-relative path: `data/home/.config/tool/state.json` becomes `~/.config/tool/state.json`. Source directories only provide hierarchy, so empty directories have no effect and whole destination directories are never replaced. Every instance on the machine deliberately uses this one shared source, which means simultaneously running instances can contend over mutable selected files.
+
+To opt in an existing file, move it to its exact path under `data/home`, then restart the container so startup creates the link. For example, run the following on the host from this repository; replace `dev-container` with a named instance when needed:
+
+```bash
+docker exec dev-container sh -c 'mkdir -p "$DEV_CONTAINER_REPO_DIR/data/home/.config/tool" && mv "$HOME/.config/tool/state.json" "$DEV_CONTAINER_REPO_DIR/data/home/.config/tool/state.json"'
+docker restart dev-container
+```
+
+Persistence is file-grained. If an application updates a file by atomically renaming a replacement over it, the symlink can be lost and later writes remain only in the ephemeral home. Newly named state files are not automatically selected merely because another file in the same directory is selected. Verify application behavior before relying on this mechanism for important state.
+
+Startup refuses to select `data/home/.ssh/authorized_keys`, `data/home/.ssh/id_ed25519.pub`, `data/home/.ssh/agent.sock`, or anything below those paths because the runtime manages them. Other unlisted files—including shell history, caches, credentials, and runtime-installed tools—are discarded on container recreation. `data/` is excluded from both Git and the Docker build context, but it is still ordinary ignored machine data: commands such as `git clean -fdx` can permanently delete it.
 
 ### Docker-outside-of-docker bind mounts (macOS only)
 
@@ -151,14 +168,6 @@ This applies only when the host is **macOS**; on a Linux host it has no effect.
 The host Docker socket is mounted, so `docker` commands inside the container run against the host's Docker daemon. On a Mac, Docker Desktop resolves bind-mount *sources* against the **macOS host** filesystem and only shares certain roots (e.g. `/Users`). But because of the Mac-only `/Users -> /home` symlink above, the repo's *real* path inside the container is `/home/$USERNAME/...`. Tools that canonicalize a path before mounting it — notably `cargo-prove prove build --docker` — then pass the unshared `/home/...` source, and Docker Desktop denies the mount (`path ... is not shared from the host`).
 
 To fix this transparently, `scripts/docker-shim` is installed as `/usr/local/bin/docker` (which precedes the real `/usr/bin/docker` on `PATH`). It derives the container-path → host-path map from `/proc/self/mountinfo` and rewrites only bind-mount *sources* to the shared host path before exec'ing the real docker. On a Linux host there is no Docker Desktop and nothing to remap, so the shim is a transparent pass-through. It never touches container-target paths, named volumes, or non-mount arguments.
-
-The home directory (`/home/$USERNAME`) is backed by a named Docker volume (`dev-container_home` for the default instance), so shell history, caches, configs, and runtime-installed tools persist across container restarts and rebuilds. On first run, the volume is seeded from the image's home directory (dotfiles, etc.). Subsequent rebuilds will *not* overwrite the volume — to pick up new home-dir content from a rebuilt image, remove the volume first:
-
-```bash
-docker compose -p dev-container down
-docker volume rm dev-container_home
-./build
-```
 
 ### Custom Mounts
 

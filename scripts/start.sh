@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+if [ -z "${DEV_CONTAINER_REPO_DIR:-}" ]; then
+  echo "Error: DEV_CONTAINER_REPO_DIR must be set by the host launcher" >&2
+  exit 1
+fi
+
+persistent_home="$DEV_CONTAINER_REPO_DIR/data/home"
+sudo mkdir -p "$persistent_home"
+sudo chown "$(id -u):$(id -g)" "$persistent_home"
+/usr/local/bin/link-home "$persistent_home" "$HOME"
+
 mkdir -p ~/.ssh
 echo "$SSH_AUTHORIZED_KEYS" >~/.ssh/authorized_keys
 echo "$SSH_AUTHORIZED_KEYS" | head -n1 >~/.ssh/id_ed25519.pub

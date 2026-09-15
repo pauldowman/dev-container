@@ -118,10 +118,11 @@ RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') && \
     rm nvim-linux-${ARCH}.tar.gz && \
     ln -sf /opt/nvim-linux-${ARCH}/bin/nvim /usr/local/bin/nvim
 
-# tmux-resurrect + tmux-continuum: auto-save/restore tmux sessions across
-# container rebuilds. Loaded from /etc/tmux.conf (read before ~/.tmux.conf) so
-# user dotfiles stay portable to other environments. Plugins live in /opt (an
-# image layer, refreshed on rebuild); saved state lands under ~ (home volume).
+# tmux-resurrect + tmux-continuum: auto-save/restore tmux sessions while their
+# state remains in the container home. Loaded from /etc/tmux.conf (read before
+# ~/.tmux.conf) so user dotfiles stay portable to other environments. Plugins
+# live in /opt and are refreshed on rebuild; home state is ephemeral unless
+# individual files are selected through data/home.
 RUN git clone --depth 1 https://github.com/tmux-plugins/tmux-resurrect /opt/tmux-plugins/tmux-resurrect && \
     git clone --depth 1 https://github.com/tmux-plugins/tmux-continuum /opt/tmux-plugins/tmux-continuum && \
     printf '%s\n' \
@@ -144,8 +145,7 @@ RUN if [ -n "$DOTFILES_REPO" ]; then \
 # Claude CLI
 RUN curl -fsSL https://claude.ai/install.sh | bash
 
-# Language servers (system scope, refreshed on every rebuild — user-scope
-# installs land in the home volume, which only seeds once)
+# Language servers (system scope, refreshed on every rebuild)
 USER root
 RUN GOBIN=/usr/local/bin GOPATH=/tmp/gopath GOCACHE=/tmp/gocache go install golang.org/x/tools/gopls@latest && \
     rm -rf /tmp/gopath /tmp/gocache
@@ -184,6 +184,7 @@ RUN --mount=type=bind,source=.,target=/mnt/src \
 # shadows the real docker (which it execs at /usr/bin/docker).
 COPY scripts/docker-shim /usr/local/bin/docker
 
+COPY scripts/link-home /usr/local/bin/link-home
 COPY scripts/start.sh /usr/local/bin/start.sh
 CMD ["/usr/local/bin/start.sh"]
 
