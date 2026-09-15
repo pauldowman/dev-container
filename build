@@ -21,6 +21,22 @@ validate_instance() {
   fi
 }
 
+validate_build_configuration() {
+  if [[ -n "${DOCKERFILE+x}" ]]; then
+    echo "Error: DOCKERFILE is obsolete; remove it and use BUILD_TARGET=base or BUILD_TARGET=gui" >&2
+    exit 1
+  fi
+
+  BUILD_TARGET="${BUILD_TARGET:-base}"
+  case "$BUILD_TARGET" in
+    base|gui) ;;
+    *)
+      echo "Error: BUILD_TARGET must be base or gui" >&2
+      exit 1
+      ;;
+  esac
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --instance)
@@ -44,8 +60,9 @@ done
 
 validate_instance
 load_env_file "$SCRIPT_DIR/.env.$INSTANCE"
+validate_build_configuration
 
 cd "${SCRIPT_DIR}"
-env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" down --remove-orphans
+env INSTANCE="$INSTANCE" BUILD_TARGET="$BUILD_TARGET" docker compose -p "$INSTANCE" down --remove-orphans
 docker rm -f "$INSTANCE" 2>/dev/null || true
-env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" build "${build_args[@]}"
+env INSTANCE="$INSTANCE" BUILD_TARGET="$BUILD_TARGET" docker compose -p "$INSTANCE" build "${build_args[@]}"

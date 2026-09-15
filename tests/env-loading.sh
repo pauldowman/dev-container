@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
+unset BUILD_TARGET DOCKERFILE
 
 copy_runtime() {
   mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/bin"
@@ -25,7 +26,7 @@ if [[ "${1:-}" == "inspect" ]]; then
   echo "false"
   exit 0
 fi
-echo "docker INSTANCE=${INSTANCE:-} SSH_PORT=${SSH_PORT:-} CODE_DIR=${CODE_DIR:-} DOCKERFILE=${DOCKERFILE:-} args=$*"
+echo "docker INSTANCE=${INSTANCE:-} SSH_PORT=${SSH_PORT:-} CODE_DIR=${CODE_DIR:-} BUILD_TARGET=${BUILD_TARGET:-} args=$*"
 STUB
 
   cat > "$TMP_DIR/bin/ssh" <<'STUB'
@@ -52,7 +53,7 @@ write_stubs
 
 cat > "$TMP_DIR/.env" <<'ENV'
 CODE_DIR=/shared/code
-DOCKERFILE=Dockerfile
+BUILD_TARGET=base
 GH_TOKEN=shared-token
 SSH_PORT=2222
 USERNAME=tester
@@ -60,7 +61,7 @@ ENV
 
 cat > "$TMP_DIR/.env.work" <<'ENV'
 CODE_DIR=/work/code
-DOCKERFILE=Dockerfile.gui
+BUILD_TARGET=gui
 GH_TOKEN=work-token
 SSH_PORT=2223
 ENV
@@ -72,11 +73,13 @@ start_output="$("$TMP_DIR/start" --instance work)"
 assert_contains "$start_output" "INSTANCE=work"
 assert_contains "$start_output" "SSH_PORT=2223"
 assert_contains "$start_output" "CODE_DIR=/work/code"
+assert_contains "$start_output" "BUILD_TARGET=gui"
 
 fallback_output="$("$TMP_DIR/start" --instance scratch)"
 assert_contains "$fallback_output" "INSTANCE=scratch"
 assert_contains "$fallback_output" "SSH_PORT=2222"
 assert_contains "$fallback_output" "CODE_DIR=/shared/code"
+assert_contains "$fallback_output" "BUILD_TARGET=base"
 
 start_override_output="$("$TMP_DIR/start" --instance work --ssh-port 3333)"
 assert_contains "$start_override_output" "INSTANCE=work"
@@ -84,8 +87,40 @@ assert_contains "$start_override_output" "SSH_PORT=3333"
 
 build_output="$("$TMP_DIR/build" --instance work --progress plain)"
 assert_contains "$build_output" "INSTANCE=work"
-assert_contains "$build_output" "DOCKERFILE=Dockerfile.gui"
+assert_contains "$build_output" "BUILD_TARGET=gui"
 assert_contains "$build_output" "args=compose -p work build --progress plain"
+
+cat > "$TMP_DIR/.env.invalid" <<'ENV'
+BUILD_TARGET=desktop
+ENV
+
+if invalid_build_output="$("$TMP_DIR/build" --instance invalid 2>&1)"; then
+  echo "Expected build to reject an invalid BUILD_TARGET" >&2
+  exit 1
+fi
+assert_contains "$invalid_build_output" "BUILD_TARGET must be base or gui"
+
+if invalid_start_output="$("$TMP_DIR/start" --instance invalid 2>&1)"; then
+  echo "Expected start to reject an invalid BUILD_TARGET" >&2
+  exit 1
+fi
+assert_contains "$invalid_start_output" "BUILD_TARGET must be base or gui"
+
+cat > "$TMP_DIR/.env.legacy" <<'ENV'
+DOCKERFILE=Dockerfile.gui
+ENV
+
+if legacy_build_output="$("$TMP_DIR/build" --instance legacy 2>&1)"; then
+  echo "Expected build to reject obsolete DOCKERFILE" >&2
+  exit 1
+fi
+assert_contains "$legacy_build_output" "DOCKERFILE is obsolete"
+
+if legacy_start_output="$("$TMP_DIR/start" --instance legacy 2>&1)"; then
+  echo "Expected start to reject obsolete DOCKERFILE" >&2
+  exit 1
+fi
+assert_contains "$legacy_start_output" "DOCKERFILE is obsolete"
 
 dev_output="$("$TMP_DIR/dev" --instance work project)"
 assert_contains "$dev_output" "Connecting to tester@localhost:2223 (work)..."

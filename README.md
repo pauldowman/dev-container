@@ -13,13 +13,14 @@ Copy `.env.example` to `.env` and configure it:
 cp .env.example .env
 ```
 
-Build the image and start the container:
+Build the image, then start the container:
 
 ```bash
 ./build
+./start
 ```
 
-To rebuild the image and restart the container later, run `./build` again. To start the container without rebuilding, run `./start`.
+To rebuild the image later, run `./build` again; it stops the existing container before building, so run `./start` afterward. To start the container without rebuilding, run only `./start`.
 
 Set up shell integration (adds the `dev` command and tab completion):
 
@@ -93,7 +94,7 @@ The `.env` and `.env.<instance>` files are gitignored. Available options:
 | `DOTFILES_REPO` | No | — | Git repo URL to clone and install as dotfiles |
 | `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
 | `CODE_DIR` | Yes | — | Absolute host path to code directory (e.g. `/Users/paul/code`); mounted at the same path inside the container |
-| `DOCKERFILE` | No | `Dockerfile` | Dockerfile to build (use `Dockerfile.gui` for GUI access) |
+| `BUILD_TARGET` | No | `base` | Validated image target: `base` or `gui`; use `./build` and `./start` rather than invoking Compose directly |
 | `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`) |
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
@@ -126,10 +127,15 @@ echo 'export MY_VAR=value' >> ~/.zshrc.local
 
 ## GUI Access
 
-Use `Dockerfile.gui` to get an XFCE4 desktop accessible via RDP:
+Set the validated `gui` build target persistently in `.env`, then build and start to get an XFCE4 desktop accessible via RDP:
 
+```dotenv
+BUILD_TARGET=gui
 ```
-DOCKERFILE=Dockerfile.gui
+
+```bash
+./build
+./start
 ```
 
 Connect with any RDP client to `localhost:3389`. The desktop is configured with dark mode and a single workspace by default.

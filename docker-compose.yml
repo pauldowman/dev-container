@@ -4,7 +4,8 @@ services:
     hostname: ${INSTANCE:-dev-container}
     build:
       context: .
-      dockerfile: ${DOCKERFILE:-Dockerfile}
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-base}
       args:
         USERNAME: ${USERNAME:-$USER}
         DOTFILES_REPO: ${DOTFILES_REPO:-}
