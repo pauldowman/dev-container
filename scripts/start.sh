@@ -30,6 +30,9 @@ sudo update-ca-certificates >/dev/null
 
 # Keep ~/.ssh/agent.sock pointing at a live forwarded agent socket even when
 # no shell or connection triggers a repair (see scripts/ssh-agent-relink)
-while :; do /usr/local/bin/ssh-agent-relink || true; sleep 60; done &
+while :; do
+  /usr/local/bin/ssh-agent-relink || true
+  sleep 60
+done &
 
 exec sudo /usr/sbin/sshd -D
