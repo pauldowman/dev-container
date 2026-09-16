@@ -127,10 +127,11 @@ echo 'export MY_VAR=value' >> ~/.zshrc.local
 
 ## GUI Access
 
-Set the validated `gui` build target persistently in `.env`, then build and start to get an XFCE4 desktop accessible via RDP:
+Set the validated `gui` build target and append `3389` to any existing `FORWARD_PORTS` list, preferably in `.env.<instance>` when only one instance uses the GUI. Then build and start to get an XFCE4 desktop accessible via RDP:
 
 ```dotenv
 BUILD_TARGET=gui
+FORWARD_PORTS=3389
 ```
 
 ```bash
@@ -138,7 +139,7 @@ BUILD_TARGET=gui
 ./start
 ```
 
-Connect with any RDP client to `localhost:3389`. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless exact files are selected under `data/home`; because keyring applications may replace files atomically, do not assume selecting them is reliable without application-specific testing. If a stale selected keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
+Start `./dev <session-name>` for an existing code directory and leave that SSH session open; `FORWARD_PORTS=3389` forwards xrdp from the container because Compose does not publish the RDP port directly. Then connect an RDP client to `localhost:3389`; both the xrdp username and password are the configured container username. Only one SSH session can bind that local port at a time. If port 3389 is already in use or two GUI instances must run concurrently, omit it from `FORWARD_PORTS` for the additional session and create a manual forward with a different local port, such as `ssh -N -L 3390:localhost:3389 -p 2222 <username>@localhost`, adjusting the username and SSH port for the instance; connect RDP to `localhost:3390` instead. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless exact files are selected under `data/home`; because keyring applications may replace files atomically, do not assume selecting them is reliable without application-specific testing. If a stale selected keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
 
 ## Directory Mapping
 
@@ -150,6 +151,31 @@ The container home has no Docker volume. It survives an ordinary process or cont
 
 The only selective home-persistence source is the gitignored `data/home` directory in this repository. On startup, every regular file or source symlink below it is linked into the same home-relative path: `data/home/.config/tool/state.json` becomes `~/.config/tool/state.json`. Source directories only provide hierarchy, so empty directories have no effect and whole destination directories are never replaced. Every instance on the machine deliberately uses this one shared source, which means simultaneously running instances can contend over mutable selected files.
 
+Before upgrading an installation that still uses the old named home volume, copy each file you want to retain into its exact `data/home` path before running the new `./build`; the build removes the old container, though it does not delete the named volume. Also ensure this repository is inside the canonical `CODE_DIR` configured in `.env`, remove any obsolete `DOCKERFILE` setting, and use `BUILD_TARGET=base` or `BUILD_TARGET=gui`. For example, run the following from the repository root while the old default container is still running:
+
+```bash
+container=dev-container
+container_home="$(docker exec "$container" sh -c 'printf %s "$HOME"')"
+mkdir -p data/home/.config/tool
+docker cp "$container:$container_home/.config/tool/state.json" data/home/.config/tool/state.json
+```
+
+Inspect copied entries before rebuilding. Do not migrate a symlink unless its target will still exist after recreation; copy the underlying regular file instead when the old target lived only in the named home volume.
+
+If the container was already rebuilt, the old Compose volume normally remains as `<instance>_home` (for example, `dev-container_home`). Locate it with `docker volume ls --filter name=_home`, then mount that exact volume read-only and copy only the files you intend to persist:
+
+```bash
+instance=dev-container
+mkdir -p data/home/.config/tool
+docker run --rm \
+  --mount "type=volume,src=${instance}_home,dst=/old-home,readonly" \
+  --mount "type=bind,src=$PWD/data/home,dst=/new-home" \
+  ubuntu:24.04 sh -c 'mkdir -p /new-home/.config/tool && cp -a /old-home/.config/tool/state.json /new-home/.config/tool/state.json'
+sudo chown -R "$(id -u):$(id -g)" data/home/.config/tool
+```
+
+Verify the copied files and the rebuilt container before optionally removing the old volume with `docker volume rm "${instance}_home"`; that deletion is permanent. The obsolete `dev-container:latest` image can likewise be removed with `docker image rm dev-container:latest` after confirming no container still uses it.
+
 To opt in an existing file, move it to its exact path under `data/home`, then restart the container so startup creates the link. For example, run the following on the host from this repository; replace `dev-container` with a named instance when needed:
 
 ```bash
@@ -160,6 +186,8 @@ docker restart dev-container
 Persistence is file-grained. If an application updates a file by atomically renaming a replacement over it, the symlink can be lost and later writes remain only in the ephemeral home. Newly named state files are not automatically selected merely because another file in the same directory is selected. Verify application behavior before relying on this mechanism for important state.
 
 Startup refuses to select `data/home/.ssh/authorized_keys`, `data/home/.ssh/id_ed25519.pub`, `data/home/.ssh/agent.sock`, or anything below those paths because the runtime manages them. Other unlisted files—including shell history, caches, credentials, and runtime-installed tools—are discarded on container recreation. `data/` is excluded from both Git and the Docker build context, but it is still ordinary ignored machine data: commands such as `git clean -fdx` can permanently delete it.
+
+If a selected path prevents startup, inspect `docker logs <instance>` from the host. Fix or remove the named entry under `data/home`, then restart the container; SSH cannot become available until every selected mapping passes validation.
 
 ### Docker-outside-of-docker bind mounts (macOS only)
 

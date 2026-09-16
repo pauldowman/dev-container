@@ -50,6 +50,8 @@ The home directory is ephemeral across container recreation. The only persistenc
 
 Do not claim persistence for files an application updates by atomic rename because that can replace the destination symlink. Newly named files are not automatically selected. The linker rejects `.ssh/authorized_keys`, `.ssh/id_ed25519.pub`, `.ssh/agent.sock`, and descendants because startup manages them. Unlisted home state is discarded on recreation, while code persists through `CODE_DIR`. `data/` is outside the build context and ignored by Git, but `git clean -fdx` can still delete it.
 
+When upgrading from the old named-home-volume configuration, selected files must be copied into `data/home` before the first rebuild when possible. The old `<instance>_home` volume is left orphaned rather than deleted and can be mounted read-only for recovery; `README.md` contains the exact procedure. A linker validation error stops startup before sshd, so recovery must be performed from the host by inspecting `docker logs <instance>` and fixing the offending `data/home` entry.
+
 ## Connecting
 
 Use the `dev` script to connect. It opens (or reattaches to) a named tmux session in `~/code/<session-name>` and forwards the GitHub token:
