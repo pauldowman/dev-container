@@ -30,6 +30,9 @@ command -v mountpoint >/dev/null || fail "mountpoint command is required"
 source_root="$(realpath -e -- "$source_argument")"
 destination_root="$(realpath -e -- "$destination_argument")"
 
+[[ "$destination_root" != "/" ]] || fail "destination root must not be the filesystem root"
+[[ "$source_root" != "$destination_root" ]] || fail "source and destination roots must differ"
+
 is_same_or_descendant() {
   local path="$1"
   local possible_parent="$2"
@@ -39,8 +42,8 @@ is_same_or_descendant() {
   [[ "$path" == "$possible_parent/"* ]]
 }
 
-if is_same_or_descendant "$source_root" "$destination_root" || is_same_or_descendant "$destination_root" "$source_root"; then
-  fail "source and destination roots must not overlap"
+if is_same_or_descendant "$destination_root" "$source_root"; then
+  fail "destination root must not be inside source root"
 fi
 
 is_runtime_managed_path() {
@@ -50,8 +53,9 @@ is_runtime_managed_path() {
   esac
 }
 
-ensure_destination_parent() {
+check_destination_parent() {
   local relative_path="$1"
+  local create_missing="$2"
   local parent_relative current component remaining
 
   if [[ "$relative_path" != */* ]]; then
@@ -75,14 +79,22 @@ ensure_destination_parent() {
 
     if [[ -e "$current" ]]; then
       [[ -d "$current" ]] || fail "destination parent is not a directory: $current"
-    else
+    elif [[ "$create_missing" == "true" ]]; then
       mkdir -- "$current"
     fi
 
-    if mountpoint -q -- "$current"; then
+    if [[ -e "$current" ]] && mountpoint -q -- "$current"; then
       fail "destination parent is a mountpoint: $current"
     fi
   done
+}
+
+validate_destination_parent() {
+  check_destination_parent "$1" false
+}
+
+ensure_destination_parent() {
+  check_destination_parent "$1" true
 }
 
 source_list="$(mktemp)"
@@ -95,8 +107,22 @@ while IFS= read -r -d '' source_path; do
   relative_path="${source_path#"$source_root"/}"
   is_runtime_managed_path "$relative_path" && fail "refusing runtime-managed destination: $relative_path"
 
-  ensure_destination_parent "$relative_path"
   destination_path="$destination_root/$relative_path"
+  if is_same_or_descendant "$destination_path" "$source_root"; then
+    fail "destination maps into source root: $relative_path"
+  fi
+
+  validate_destination_parent "$relative_path"
+  if [[ -e "$destination_path" && ! -L "$destination_path" && ! -f "$destination_path" ]]; then
+    fail "destination exists with an unsupported type: $destination_path"
+  fi
+done < "$source_list"
+
+while IFS= read -r -d '' source_path; do
+  relative_path="${source_path#"$source_root"/}"
+  destination_path="$destination_root/$relative_path"
+
+  ensure_destination_parent "$relative_path"
 
   if [[ -L "$destination_path" || -f "$destination_path" ]]; then
     rm -f -- "$destination_path"

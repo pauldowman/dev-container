@@ -73,10 +73,18 @@ assert_link_target "$DESTINATION/dangling" "$SOURCE/dangling"
 assert_link_target "$DESTINATION/file" "$SOURCE/file"
 
 new_fixture leaf-directory-conflict
-printf 'source\n' > "$SOURCE/conflict"
-mkdir "$DESTINATION/conflict"
-expect_failure "destination leaf directory conflict" "$LINK_HOME" "$SOURCE" "$DESTINATION"
-[[ -d "$DESTINATION/conflict" ]] || fail "Destination directory conflict was modified"
+printf 'safe\n' > "$SOURCE/00-safe"
+printf 'source\n' > "$SOURCE/zz-conflict"
+mkdir "$DESTINATION/zz-conflict"
+mkdir "$TMP_DIR/ordered-find-bin"
+cat > "$TMP_DIR/ordered-find-bin/find" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\0' "$LINK_HOME_TEST_FIRST" "$LINK_HOME_TEST_SECOND"
+STUB
+chmod +x "$TMP_DIR/ordered-find-bin/find"
+expect_failure "destination leaf directory conflict" env PATH="$TMP_DIR/ordered-find-bin:$PATH" LINK_HOME_TEST_FIRST="$SOURCE/00-safe" LINK_HOME_TEST_SECOND="$SOURCE/zz-conflict" "$LINK_HOME" "$SOURCE" "$DESTINATION"
+[[ -d "$DESTINATION/zz-conflict" ]] || fail "Destination directory conflict was modified"
+[[ ! -e "$DESTINATION/00-safe" ]] || fail "Destination conflict produced a partial overlay"
 
 new_fixture parent-type-conflict
 mkdir -p "$SOURCE/parent"
@@ -131,9 +139,46 @@ printf 'source\n' > "$SOURCE/file"
 expect_failure "destination inside source" "$LINK_HOME" "$SOURCE" "$SOURCE/destination"
 
 new_fixture source-inside-destination
-mkdir "$DESTINATION/source"
-printf 'source\n' > "$DESTINATION/source/file"
-expect_failure "source inside destination" "$LINK_HOME" "$DESTINATION/source" "$DESTINATION"
+SOURCE="$DESTINATION/source"
+mkdir "$SOURCE"
+printf 'source\n' > "$SOURCE/file"
+"$LINK_HOME" "$SOURCE" "$DESTINATION"
+assert_link_target "$DESTINATION/file" "$SOURCE/file"
+
+new_fixture documented-mounted-layout
+SOURCE="$DESTINATION/code/dev-container/data/home"
+mkdir -p "$SOURCE/.config/tool"
+printf 'state\n' > "$SOURCE/.config/tool/state.json"
+"$LINK_HOME" "$SOURCE" "$DESTINATION"
+assert_link_target "$DESTINATION/.config/tool/state.json" "$SOURCE/.config/tool/state.json"
+
+new_fixture source-inside-destination-self-mapping
+SOURCE="$DESTINATION/source"
+mkdir -p "$SOURCE/source"
+printf 'safe\n' > "$SOURCE/safe"
+printf 'unsafe\n' > "$SOURCE/source/file"
+expect_failure "selected file maps back into source" "$LINK_HOME" "$SOURCE" "$DESTINATION"
+[[ ! -e "$DESTINATION/safe" ]] || fail "Unsafe selection produced a partial overlay"
+[[ -f "$SOURCE/source/file" && ! -L "$SOURCE/source/file" ]] || fail "Unsafe selection modified its source"
+
+new_fixture source-inside-destination-exact-self-mapping
+SOURCE="$DESTINATION/source"
+mkdir "$SOURCE"
+printf 'unsafe\n' > "$SOURCE/source"
+expect_failure "selected file maps exactly to source root" "$LINK_HOME" "$SOURCE" "$DESTINATION"
+[[ -f "$SOURCE/source" && ! -L "$SOURCE/source" ]] || fail "Exact self-mapping modified its source"
+
+new_fixture source-inside-destination-ancestor-mapping
+SOURCE="$DESTINATION/code/dev-container/data/home"
+mkdir -p "$SOURCE"
+printf 'safe\n' > "$SOURCE/00-safe"
+printf 'unsafe\n' > "$SOURCE/code"
+expect_failure "selected file maps to source ancestor" "$LINK_HOME" "$SOURCE" "$DESTINATION"
+[[ ! -e "$DESTINATION/00-safe" ]] || fail "Source-ancestor selection produced a partial overlay"
+[[ -f "$SOURCE/code" && ! -L "$SOURCE/code" ]] || fail "Source-ancestor selection modified its source"
+
+new_fixture filesystem-root-destination
+expect_failure "filesystem root destination" "$LINK_HOME" "$SOURCE" /
 
 new_fixture destination-root-symlink
 mkdir "$TMP_DIR/real-destination"
