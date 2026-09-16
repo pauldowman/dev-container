@@ -35,18 +35,16 @@ container_id="$(docker run -d \
   --env CODE_DIR="$FIXTURE_ROOT" \
   --env DEV_CONTAINER_REPO_DIR="$FIXTURE_ROOT/repo" \
   --env SSH_AUTHORIZED_KEYS="$(cat "$FIXTURE_ROOT/login-key.pub")" \
-  --publish 127.0.0.1::22 \
   --volume "$FIXTURE_ROOT:$FIXTURE_ROOT" \
   "$IMAGE")"
 
-published_address="$(docker port "$container_id" 22/tcp)"
-ssh_port="${published_address##*:}"
 literal_dollar='$'
 remote_check="test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\" && zsh -ic 'test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\"' && codex --version >/dev/null"
 
 ssh_ready=false
 for _ in {1..60}; do
-  if ssh -i "$FIXTURE_ROOT/login-key" -p "$ssh_port" \
+  # Connect from inside the container so the test does not depend on the runner's network namespace.
+  if docker exec --user "$username" "$container_id" ssh -i "$FIXTURE_ROOT/login-key" \
     -o BatchMode=yes \
     -o ConnectTimeout=1 \
     -o LogLevel=ERROR \
@@ -61,5 +59,7 @@ done
 
 if [[ "$ssh_ready" != "true" ]]; then
   echo "Timed out waiting for an SSH login to resolve standalone Codex" >&2
+  docker inspect "$container_id" --format 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' >&2 || true
+  docker logs "$container_id" >&2 || true
   exit 1
 fi
