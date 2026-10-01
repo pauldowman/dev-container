@@ -46,6 +46,7 @@ assert_contains "$default_config" "source: /tmp/code"
 assert_contains "$default_config" "target: /tmp/code"
 assert_not_contains "$default_config" "/home/tester"
 assert_not_contains "$default_config" "source: home"
+assert_contains "$default_config" 'shm_size: "1073741824"'
 
 gui_config="$(render_compose BUILD_TARGET=gui)"
 assert_contains "$gui_config" "target: gui"

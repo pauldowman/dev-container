@@ -5,7 +5,5 @@
 #
 # Use this for system-wide installs that need root: apt packages, debs, etc.
 #
-# Example: install Google Chrome
-#   curl -fsSL https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -o /tmp/chrome.deb
-#   apt-get install -y /tmp/chrome.deb
-#   rm /tmp/chrome.deb
+# Example: install the PostgreSQL client
+#   apt-get install -y postgresql-client

@@ -11,6 +11,10 @@ services:
         DOTFILES_REPO: ${DOTFILES_REPO:-}
         DOTFILES_INSTALL_CMD: ${DOTFILES_INSTALL_CMD:-./install.sh}
     image: dev-container:${INSTANCE:-dev-container}-${BUILD_TARGET:-base}
+    # Docker's 64MB default /dev/shm breaks Chrome renderers, Python
+    # multiprocessing, and similar shared-memory users. tmpfs only uses memory
+    # that is written, so a larger cap costs nothing when idle.
+    shm_size: 1gb
     ports:
       - "127.0.0.1:${SSH_PORT:-2222}:22"
     environment:

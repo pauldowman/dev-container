@@ -212,6 +212,19 @@ RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 fonts-liberation \
 RUN printf 'auth     optional  pam_gnome_keyring.so\nsession  optional  pam_gnome_keyring.so auto_start\n' \
     >> /etc/pam.d/xrdp-sesman
 
+RUN curl -fsSL "https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb" -o /tmp/chrome.deb \
+    && apt-get install -y /tmp/chrome.deb \
+    && rm /tmp/chrome.deb \
+    && apt-get clean
+
+# Make Chrome the XFCE preferred browser, launched with --no-sandbox. Docker's
+# default seccomp profile blocks the namespaces Chrome's sandbox needs, so a
+# sandboxed launch crashes and apps opening links (xdg-open -> exo-open) show
+# "Failed to launch preferred application".
+RUN printf '[Desktop Entry]\nVersion=1.0\nType=X-XFCE-Helper\nName=Google Chrome (no sandbox)\nIcon=google-chrome\nX-XFCE-Binaries=google-chrome-stable;\nX-XFCE-Category=WebBrowser\nX-XFCE-Commands=%%B --no-sandbox;\nX-XFCE-CommandsWithParameter=%%B --no-sandbox "%%s";\n' \
+      > /usr/share/xfce4/helpers/chrome-nosandbox.desktop \
+    && sed -i 's/^WebBrowser=.*/WebBrowser=chrome-nosandbox/' /etc/xdg/xfce4/helpers.rc
+
 COPY scripts/start-gui.sh /usr/local/bin/start-gui.sh
 
 USER ${USERNAME}
@@ -240,5 +253,7 @@ RUN ! command -v xrdp >/dev/null
 
 FROM gui AS gui-target-test
 RUN command -v xrdp >/dev/null
+RUN command -v google-chrome-stable >/dev/null
+RUN grep -qx 'WebBrowser=chrome-nosandbox' /etc/xdg/xfce4/helpers.rc
 
 FROM development AS base
