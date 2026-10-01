@@ -199,6 +199,7 @@ RUN echo "$USERNAME:$USERNAME" | chpasswd
 
 RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 fonts-liberation \
     gnome-keyring libsecret-tools \
+    python3-gi gir1.2-atspi-2.0 at-spi2-core gir1.2-gtk-3.0 xdotool x11-utils \
     && adduser xrdp ssl-cert \
     && printf '#!/bin/sh\nexec startxfce4\n' > /etc/xrdp/startwm.sh \
     && apt-get clean \

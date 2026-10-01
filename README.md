@@ -261,3 +261,7 @@ git config --global gpg.format ssh
 git config --global user.signingkey ~/.ssh/id_ed25519.pub
 git config --global commit.gpgsign true
 ```
+
+## Desktop agent control
+
+The opt-in `gui` image includes system Python GI, AT-SPI, GTK 3/GDK capture, `xdotool`, `xprop`, and D-Bus session utilities. For example, BYOB’s controller is documented in its `docs/desktop-testing.md`; run `just ui-doctor` in that checkout after GUI login. Controllers require access to the intended X11 display and AT-SPI session bus. It discovers the live display and session bus from the current desktop processes; do not persist session bus addresses or assume a display number. The default `base` image remains SSH-only.
