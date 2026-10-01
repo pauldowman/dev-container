@@ -199,11 +199,13 @@ RUN echo "$USERNAME:$USERNAME" | chpasswd
 
 RUN apt-get update && apt-get install -y xfce4 xrdp dbus-x11 fonts-liberation \
     gnome-keyring libsecret-tools \
-    python3-gi gir1.2-atspi-2.0 at-spi2-core gir1.2-gtk-3.0 xdotool x11-utils \
+    python3-gi gir1.2-atspi-2.0 at-spi2-core gir1.2-gtk-3.0 xdotool x11-utils libglib2.0-bin \
     && adduser xrdp ssl-cert \
     && printf '#!/bin/sh\nexec startxfce4\n' > /etc/xrdp/startwm.sh \
     && apt-get clean \
     && rm -rf /usr/share/backgrounds/xfce/*
+
+COPY scripts/desktop-accessibility.desktop /etc/xdg/autostart/desktop-accessibility.desktop
 
 # Unlock the GNOME login keyring at xrdp login. Without this, apps that use the
 # Secret Service (e.g. LibreSafe storing its vault pepper) hit a locked login

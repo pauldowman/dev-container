@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Desktop accessibility
+Comment=Enable native accessibility APIs for desktop control
+Exec=gdbus call --session --timeout 10 --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Set org.a11y.Status IsEnabled "<true>"
+Terminal=false
+NoDisplay=true
