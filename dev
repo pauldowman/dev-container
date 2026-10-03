@@ -119,7 +119,7 @@ ssh_opts=(-A -l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHos
 if [ -n "${FORWARD_PORTS:-}" ]; then
   IFS=',' read -ra ports <<< "$FORWARD_PORTS"
   for port in "${ports[@]}"; do
-    ssh_opts+=(-L "${port}:localhost:${port}")
+    ssh_opts+=(-L "${port%%:*}:localhost:${port##*:}")
   done
 fi
 
