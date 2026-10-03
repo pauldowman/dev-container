@@ -3,6 +3,10 @@ set -e
 
 echo "DISPLAY=:10" | sudo tee -a /etc/environment >/dev/null
 
+# Pid files survive in the container filesystem when the container stops
+# uncleanly, and xrdp refuses to start while they exist.
+sudo rm -f /var/run/xrdp/xrdp-sesman.pid /var/run/xrdp/xrdp.pid
+
 echo "Starting xrdp-sesman..."
 sudo xrdp-sesman
 until [ -f /var/run/xrdp/xrdp-sesman.pid ]; do
