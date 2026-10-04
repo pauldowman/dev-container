@@ -109,7 +109,7 @@ If `DOTFILES_REPO` is set, the dotfiles install runs *after* the defaults are co
 
 ## Customization
 
-Two optional scripts can be created locally (both are gitignored):
+Two optional scripts can be created locally (both are gitignored). Each runs with `bash -eo pipefail`, so any failing command fails the build; append `|| true` to a command that is allowed to fail. Commands must not prompt, because the build has no TTY.
 
 **`custom-install-root.sh`** — runs as root after the toolchains are installed, before the user is created. Use for extra `apt` packages or system-level config.
 
@@ -121,9 +121,11 @@ Example `custom-install-user.sh`:
 # Install a mise plugin and tool version
 mise use --global node@lts
 
-# Add shell config
-echo 'export MY_VAR=value' >> ~/.zshrc.local
+# Install agent skills globally (-y on both npx and skills avoids prompts)
+npx -y skills@latest add -g -y pauldowman/cross-agent-review
 ```
+
+Don't write `~/.zshrc.local` here: if `data/home/.zshrc.local` exists, startup replaces the image's copy with a link to it. Put shell config in your dotfiles or in `data/home/.zshrc.local`.
 
 ## GUI Access
 

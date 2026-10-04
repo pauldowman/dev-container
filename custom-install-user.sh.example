@@ -4,10 +4,11 @@
 # custom-install-user.sh is gitignored so changes are local only.
 #
 # Use this for personal tools, shell plugins, Claude plugins, or configuration.
+# Runs with `bash -eo pipefail`: any failing command fails the build, and commands must not prompt (no TTY).
+# Don't write ~/.zshrc.local here; startup replaces it when data/home/.zshrc.local exists.
 #
-# Example: install mise (version manager)
-#   curl https://mise.run | sh
-#   echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc.local
+# Example: install agent skills globally
+#   npx -y skills@latest add -g -y pauldowman/cross-agent-review
 #
 # Example: install Claude Code plugins
 #   $HOME/.local/bin/claude plugin marketplace add austintgriffith/ethskills
