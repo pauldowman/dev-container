@@ -191,6 +191,8 @@ docker restart dev-container
 
 Persistence is file-grained. If an application updates a file by atomically renaming a replacement over it, the symlink can be lost and later writes remain only in the ephemeral home. Newly named state files are not automatically selected merely because another file in the same directory is selected. Verify application behavior before relying on this mechanism for important state.
 
+Claude Code is one such application: token refreshes and logins rename a new `~/.claude/.credentials.json` into place, so a selected copy stops being linked and goes stale. Instead, run `claude setup-token` once (it requires a Claude subscription and prints a long-lived token) and add `export CLAUDE_CODE_OAUTH_TOKEN=<token>` to `data/home/.zshrc.local`, which the dotfiles `.zshrc` sources and Claude Code never rewrites. Every instance then shares the same credentials without writing them back.
+
 Startup refuses to select `data/home/.ssh/authorized_keys`, `data/home/.ssh/id_ed25519.pub`, `data/home/.ssh/agent.sock`, or anything below those paths because the runtime manages them. Other unlisted files—including shell history, caches, credentials, and runtime-installed tools—are discarded on container recreation. `data/` is excluded from both Git and the Docker build context, but it is still ordinary ignored machine data: commands such as `git clean -fdx` can permanently delete it.
 
 If a selected path prevents startup, inspect `docker logs <instance>` from the host. Fix or remove the named entry under `data/home`, then restart the container; SSH cannot become available until every selected mapping passes validation.
