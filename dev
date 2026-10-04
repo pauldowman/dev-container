@@ -98,9 +98,17 @@ if [ -z "${CODE_DIR:-}" ]; then
   exit 1
 fi
 
-if [ -z "${SSH_AUTH_SOCK:-}" ]; then
-  eval "$(ssh-agent -s)" >/dev/null
+agent_status=0
+ssh-add -l >/dev/null 2>&1 || agent_status=$?
+if [ "$agent_status" -ne 0 ]; then
+  if [ "$agent_status" -ne 1 ]; then
+    eval "$(ssh-agent -s)" >/dev/null
+  fi
   ssh-add
+  if ! ssh-add -l >/dev/null 2>&1; then
+    echo "Error: SSH agent has no usable identities after loading keys" >&2
+    exit 1
+  fi
 fi
 
 port_output="$(env INSTANCE="$INSTANCE" docker compose -p "$INSTANCE" port dev-container 22 2>/dev/null || true)"

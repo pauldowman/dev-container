@@ -1,26 +1,28 @@
 #!/bin/sh
-# Keep ~/.ssh/agent.sock pointing at a live forwarded SSH agent socket.
-#
-# sshd creates a per-connection agent socket under /tmp/ssh-*/ and deletes it
-# on disconnect, so shells use the stable ~/.ssh/agent.sock symlink instead.
-# The link goes dangling when the connection it points at closes. This script
-# leaves a working link untouched (so a newer connection's disconnect doesn't
-# strand older ones) and otherwise re-points it at any live socket. Called
-# from ~/.ssh/rc on each connection and from a watchdog loop in start.sh.
+# Preserve an agent containing the signing key; repair dead, empty or wrong-key
+# targets on SSH connection and from the startup watchdog. Keep output empty
+# because ~/.ssh/rc also runs during scp/sftp sessions.
+# Usage: ssh-agent-relink [stable-link [public-key-file]]
 
-link="$HOME/.ssh/agent.sock"
+link="${1:-$HOME/.ssh/agent.sock}"
+signing_key="${2:-$HOME/.ssh/id_ed25519.pub}"
+fingerprint=$(ssh-keygen -lf "$signing_key" 2>/dev/null | awk 'NR == 1 { print $2 }')
+[ -n "$fingerprint" ] || exit 1
 
-# ssh-add exits 2 when it can't reach an agent; 0/1 mean the socket is live
-alive() {
-	SSH_AUTH_SOCK="$1" ssh-add -l >/dev/null 2>&1 || [ $? -ne 2 ]
+has_signing_key() {
+	identities=$(SSH_AUTH_SOCK="$1" ssh-add -l 2>/dev/null) || return 1
+	printf '%s\n' "$identities" | awk -v expected="$fingerprint" '
+		$2 == expected { found = 1 }
+		END { exit !found }
+	'
 }
 
-alive "$link" && exit 0
+has_signing_key "$link" && exit 0
 
 for sock in /tmp/ssh-*/agent.*; do
 	[ -S "$sock" ] || continue
-	if alive "$sock"; then
-		ln -sf "$sock" "$link"
+	if has_signing_key "$sock"; then
+		ln -sf "$sock" "$link" 2>/dev/null || exit 1
 		exit 0
 	fi
 done

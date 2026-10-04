@@ -28,7 +28,7 @@ fi
 sudo mkdir -p /run/sshd
 sudo update-ca-certificates >/dev/null
 
-# Keep ~/.ssh/agent.sock pointing at a live forwarded agent socket even when
+# Keep ~/.ssh/agent.sock pointing at an agent with the signing key even when
 # no shell or connection triggers a repair (see scripts/ssh-agent-relink)
 while :; do
   /usr/local/bin/ssh-agent-relink || true

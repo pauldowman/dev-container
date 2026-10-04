@@ -256,7 +256,9 @@ Suggested permissions for a token that can push, work with PRs and issues, manag
 
 ## Git Commit Signing
 
-SSH commit signing works via the forwarded SSH agent. Each connection's forwarded socket is symlinked to the stable path `~/.ssh/agent.sock` (which all shells use), and `ssh-agent-relink` re-points the link whenever its target dies — on each new connection via `~/.ssh/rc`, and within a minute via a watchdog loop in the container entrypoint — so the agent keeps working as SSH sessions come and go, as long as at least one connection with agent forwarding is alive.
+SSH commit signing works via the forwarded SSH agent. Shells use the stable path `~/.ssh/agent.sock`. On each SSH connection and every 60 seconds, `ssh-agent-relink` checks whether its target contains the key matching `~/.ssh/id_ed25519.pub`, which startup writes from the first `SSH_AUTHORIZED_KEYS` entry. It preserves a matching agent and searches other forwarded sockets when the current agent is unreachable, empty, or holds different keys. If no agent has the expected key, it leaves the link unchanged and reports failure to its caller without printing into the SSH session. Keep at least one SSH connection open that forwards the expected key.
+
+The host `./dev` launcher checks an existing agent before connecting. It loads keys into an empty agent, or starts an agent when the current one is unreachable, and refuses to connect if loading fails or leaves the agent empty. Changes to the container helper take effect after rebuilding and recreating the container; changing the host launcher takes effect on the next invocation.
 
 Configure git in your dotfiles:
 
@@ -265,6 +267,8 @@ git config --global gpg.format ssh
 git config --global user.signingkey ~/.ssh/id_ed25519.pub
 git config --global commit.gpgsign true
 ```
+
+Run the agent regression tests with `python3 tests/ssh-agent-relink.py` and `python3 tests/dev-agent.py`. The relink tests create temporary keys and agents, including an actual signing probe; they leave the current session's agent untouched. For an isolated relink check, the helper accepts `ssh-agent-relink [stable-link [public-key-file]]`.
 
 ## Desktop agent control
 

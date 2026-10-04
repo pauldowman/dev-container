@@ -96,8 +96,8 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
 
 # Stable SSH agent socket: ssh-agent-relink keeps ~/.ssh/agent.sock (the path
-# all shells use via /etc/zsh/zshrc) pointing at a live per-connection
-# forwarded socket, repairing the link when the connection it tracks closes.
+# all shells use via /etc/zsh/zshrc) pointing at an agent with the signing key,
+# repairing dead, empty or wrong-key targets.
 # Called from ~/.ssh/rc on each connection and from a watchdog loop in start.sh.
 COPY scripts/ssh-agent-relink /usr/local/bin/ssh-agent-relink
 COPY --chown=$USERNAME:$USERNAME scripts/ssh-rc /home/$USERNAME/.ssh/rc

@@ -34,7 +34,12 @@ STUB
 echo "ssh GH_TOKEN=${GH_TOKEN:-} args=$*"
 STUB
 
-  chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh"
+  cat > "$TMP_DIR/bin/ssh-add" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+
+  chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh" "$TMP_DIR/bin/ssh-add"
 }
 
 assert_contains() {
