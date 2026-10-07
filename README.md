@@ -193,6 +193,18 @@ Persistence is file-grained. If an application updates a file by atomically rena
 
 Claude Code is one such application: token refreshes and logins rename a new `~/.claude/.credentials.json` into place, so a selected copy stops being linked and goes stale. Instead, run `claude setup-token` once (it requires a Claude subscription and prints a long-lived token) and add `export CLAUDE_CODE_OAUTH_TOKEN=<token>` to `data/home/.zshrc.local`, which the dotfiles `.zshrc` sources and Claude Code never rewrites. Every instance then shares the same credentials without writing them back.
 
+To persist a whole directory, such as agent session transcripts where every new session creates a new file, keep the real directory under `data/dirs` and select it with a relative source symlink. The linker keeps a source symlink as a single leaf and does not descend into it, so the destination becomes a symlink to the directory and new files, including atomically renamed ones, land in persistent storage. For Claude Code sessions (needed by `/resume` and `--continue`), run inside the container after exiting Claude:
+
+```bash
+repo=~/code/dev-container  # path to this repository; SSH sessions do not have $DEV_CONTAINER_REPO_DIR
+mkdir -p ~/.claude/projects "$repo/data/dirs/.claude" "$repo/data/home/.claude" &&
+  mv ~/.claude/projects "$repo/data/dirs/.claude/projects" &&
+  ln -s ../../dirs/.claude/projects "$repo/data/home/.claude/projects" &&
+  ln -s "$repo/data/home/.claude/projects" ~/.claude/projects
+```
+
+The last command links the running container immediately; a restart or recreation creates the same link. omp sessions work the same way with `.omp/agent/sessions`. Startup fails if the destination already exists as a real directory, so move it before restarting. Codex sessions are not covered: `codex resume` also depends on versioned SQLite state files in `~/.codex`, and selecting the whole of `~/.codex` would shadow the image's Codex package.
+
 Startup refuses to select `data/home/.ssh/authorized_keys`, `data/home/.ssh/id_ed25519.pub`, `data/home/.ssh/agent.sock`, or anything below those paths because the runtime manages them. Other unlisted files—including shell history, caches, credentials, and runtime-installed tools—are discarded on container recreation. `data/` is excluded from both Git and the Docker build context, but it is still ordinary ignored machine data: commands such as `git clean -fdx` can permanently delete it.
 
 If a selected path prevents startup, inspect `docker logs <instance>` from the host. Fix or remove the named entry under `data/home`, then restart the container; SSH cannot become available until every selected mapping passes validation.
