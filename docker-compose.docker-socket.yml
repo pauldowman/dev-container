@@ -1,0 +1,7 @@
+# Added by ./start only when DANGEROUSLY_MOUNT_DOCKER_SOCKET=true. The socket lets
+# the container control the host Docker daemon, which includes bind-mounting any
+# host path, so it grants host-level access.
+services:
+  dev-container:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

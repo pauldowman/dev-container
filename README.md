@@ -98,6 +98,7 @@ The `.env` and `.env.<instance>` files are gitignored. Available options:
 | `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`); use `local:container` to forward to a different local port, e.g. `3390:3389` |
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
+| `DANGEROUSLY_MOUNT_DOCKER_SOCKET` | No | `false` | `true` mounts the host Docker socket so `docker` works inside the container; this grants host-level access (see [Docker access](#docker-access)) |
 | `SSH_PORT` | No | `2222` | Host SSH port published by `./start`; use a unique port for each running instance |
 | `DEV_CONTAINER_INSTANCE` | No | `dev-container` | Default instance name for `./build`, `./start`, and `./dev`; can be overridden with `--instance` |
 
@@ -209,11 +210,17 @@ Startup refuses to select `data/home/.ssh/authorized_keys`, `data/home/.ssh/id_e
 
 If a selected path prevents startup, inspect `docker logs <instance>` from the host. Fix or remove the named entry under `data/home`, then restart the container; SSH cannot become available until every selected mapping passes validation.
 
+### Docker access
+
+The host Docker socket is not mounted by default, so `docker` commands inside the container fail with "Cannot connect to the Docker daemon". Set `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true` (in `.env`, or in `.env.<instance>` for one instance) to mount it; `./start` then adds `docker-compose.docker-socket.yml` to the Compose files. The change applies when the container is recreated, so run `./build` and `./start`; `./start` refuses to continue while a running container's socket mount disagrees with the setting.
+
+The socket is root-equivalent access to the host Docker daemon: anything in the container can start a container that bind-mounts any host path (on Docker Desktop, any shared path such as all of `/Users`), runs `--privileged`, or `docker exec`s into other instances. Leave it off for an instance that should be isolated from the host, other instances, or files outside its `CODE_DIR`.
+
 ### Docker-outside-of-docker bind mounts (macOS only)
 
 This applies only when the host is **macOS**; on a Linux host it has no effect.
 
-The host Docker socket is mounted, so `docker` commands inside the container run against the host's Docker daemon. On a Mac, Docker Desktop resolves bind-mount *sources* against the **macOS host** filesystem and only shares certain roots (e.g. `/Users`). But because of the Mac-only `/Users -> /home` symlink above, the repo's *real* path inside the container is `/home/$USERNAME/...`. Tools that canonicalize a path before mounting it — notably `cargo-prove prove build --docker` — then pass the unshared `/home/...` source, and Docker Desktop denies the mount (`path ... is not shared from the host`).
+When the host Docker socket is mounted, `docker` commands inside the container run against the host's Docker daemon. On a Mac, Docker Desktop resolves bind-mount *sources* against the **macOS host** filesystem and only shares certain roots (e.g. `/Users`). But because of the Mac-only `/Users -> /home` symlink above, the repo's *real* path inside the container is `/home/$USERNAME/...`. Tools that canonicalize a path before mounting it — notably `cargo-prove prove build --docker` — then pass the unshared `/home/...` source, and Docker Desktop denies the mount (`path ... is not shared from the host`).
 
 To fix this transparently, `scripts/docker-shim` is installed as `/usr/local/bin/docker` (which precedes the real `/usr/bin/docker` on `PATH`). It derives the container-path → host-path map from `/proc/self/mountinfo` and rewrites only bind-mount *sources* to the shared host path before exec'ing the real docker. On a Linux host there is no Docker Desktop and nothing to remap, so the shim is a transparent pass-through. It never touches container-target paths, named volumes, or non-mount arguments.
 

@@ -33,6 +33,48 @@ validate_port() {
   fi
 }
 
+validate_docker_socket_option() {
+  case "${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}" in
+    true|false) ;;
+    *)
+      echo "Error: DANGEROUSLY_MOUNT_DOCKER_SOCKET must be true or false" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# Setting COMPOSE_FILE disables Compose's automatic override file, so keep it
+# when building the default file list.
+add_docker_socket_compose_file() {
+  if [[ "${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}" != "true" ]]; then
+    return
+  fi
+
+  local compose_files="${COMPOSE_FILE:-}"
+  if [[ -z "$compose_files" ]]; then
+    compose_files="docker-compose.yml"
+    if [[ -f docker-compose.override.yml ]]; then
+      compose_files+=":docker-compose.override.yml"
+    fi
+  fi
+  export COMPOSE_FILE="$compose_files:docker-compose.docker-socket.yml"
+}
+
+# A running container is left alone, so it keeps the socket mount it was
+# created with; refuse rather than silently ignore a changed setting.
+check_running_docker_socket_mount() {
+  local container_id="$1"
+  local mounted=false
+  if docker inspect -f '{{range .Mounts}}{{println .Destination}}{{end}}' "$container_id" | grep -Fxq /var/run/docker.sock; then
+    mounted=true
+  fi
+
+  if [[ "$mounted" != "${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}" ]]; then
+    echo "Error: $INSTANCE is running with docker.sock mounted=$mounted but DANGEROUSLY_MOUNT_DOCKER_SOCKET=${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}; recreate it with ./build --instance $INSTANCE, then ./start --instance $INSTANCE" >&2
+    exit 1
+  fi
+}
+
 validate_build_configuration() {
   if [[ -n "${DOCKERFILE+x}" ]]; then
     echo "Error: DOCKERFILE is obsolete; remove it and use BUILD_TARGET=base or BUILD_TARGET=gui" >&2
@@ -123,11 +165,15 @@ else
 fi
 
 validate_port
+validate_docker_socket_option
 
 cd "${SCRIPT_DIR}"
+add_docker_socket_compose_file
 
 container_id="$(env INSTANCE="$INSTANCE" BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" SSH_PORT="$SSH_PORT" docker compose -p "$INSTANCE" ps -q dev-container 2>/dev/null || true)"
-if [[ -z "$container_id" || "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)" != "true" ]]; then
+if [[ -n "$container_id" && "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)" == "true" ]]; then
+  check_running_docker_socket_mount "$container_id"
+else
   echo "Starting $INSTANCE..."
   export DOCKER_CLI_HINTS=false
   env INSTANCE="$INSTANCE" BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" SSH_PORT="$SSH_PORT" docker compose -p "$INSTANCE" up -d

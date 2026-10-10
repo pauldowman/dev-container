@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-unset BUILD_TARGET DOCKERFILE
+unset BUILD_TARGET DOCKERFILE COMPOSE_FILE DANGEROUSLY_MOUNT_DOCKER_SOCKET
 
 copy_runtime() {
   mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/bin"
@@ -20,13 +20,18 @@ if [[ "$*" == *" port dev-container 22"* ]]; then
   exit 0
 fi
 if [[ "$*" == *" ps -q dev-container"* ]]; then
+  [[ -n "${STUB_RUNNING_MOUNTS+x}" ]] && echo "running-container-id"
+  exit 0
+fi
+if [[ "${1:-}" == "inspect" && "$*" == *".Mounts"* ]]; then
+  printf '%b' "$STUB_RUNNING_MOUNTS"
   exit 0
 fi
 if [[ "${1:-}" == "inspect" ]]; then
-  echo "false"
+  [[ -n "${STUB_RUNNING_MOUNTS+x}" ]] && echo "true" || echo "false"
   exit 0
 fi
-echo "docker INSTANCE=${INSTANCE:-} SSH_PORT=${SSH_PORT:-} CODE_DIR=${CODE_DIR:-} DEV_CONTAINER_REPO_DIR=${DEV_CONTAINER_REPO_DIR:-} BUILD_TARGET=${BUILD_TARGET:-} args=$*"
+echo "docker INSTANCE=${INSTANCE:-} SSH_PORT=${SSH_PORT:-} CODE_DIR=${CODE_DIR:-} DEV_CONTAINER_REPO_DIR=${DEV_CONTAINER_REPO_DIR:-} BUILD_TARGET=${BUILD_TARGET:-} COMPOSE_FILE=${COMPOSE_FILE:-} args=$*"
 STUB
 
   cat > "$TMP_DIR/bin/ssh" <<'STUB'
@@ -48,6 +53,17 @@ assert_contains() {
 
   if [[ "$output" != *"$expected"* ]]; then
     echo "Expected output to contain: $expected" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+}
+
+assert_not_contains() {
+  local output="$1"
+  local unexpected="$2"
+
+  if [[ "$output" == *"$unexpected"* ]]; then
+    echo "Expected output not to contain: $unexpected" >&2
     echo "$output" >&2
     exit 1
   fi
@@ -88,6 +104,62 @@ assert_contains "$fallback_output" "SSH_PORT=2222"
 assert_contains "$fallback_output" "CODE_DIR=$TMP_DIR"
 assert_contains "$fallback_output" "DEV_CONTAINER_REPO_DIR=$TMP_DIR"
 assert_contains "$fallback_output" "BUILD_TARGET=base"
+
+assert_contains "$start_output" "COMPOSE_FILE= args="
+
+cat > "$TMP_DIR/.env.docker" <<'ENV'
+DANGEROUSLY_MOUNT_DOCKER_SOCKET=true
+ENV
+
+docker_socket_output="$("$TMP_DIR/start" --instance docker)"
+assert_contains "$docker_socket_output" "COMPOSE_FILE=docker-compose.yml:docker-compose.docker-socket.yml args="
+
+touch "$TMP_DIR/docker-compose.override.yml"
+docker_socket_override_output="$("$TMP_DIR/start" --instance docker)"
+assert_contains "$docker_socket_override_output" "COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml:docker-compose.docker-socket.yml args="
+rm "$TMP_DIR/docker-compose.override.yml"
+
+cat >> "$TMP_DIR/.env.docker" <<'ENV'
+COMPOSE_FILE=docker-compose.yml:docker-compose.docker.yml
+ENV
+
+docker_socket_custom_output="$("$TMP_DIR/start" --instance docker)"
+assert_contains "$docker_socket_custom_output" "COMPOSE_FILE=docker-compose.yml:docker-compose.docker.yml:docker-compose.docker-socket.yml args="
+
+cat > "$TMP_DIR/.env.nodocker" <<'ENV'
+DANGEROUSLY_MOUNT_DOCKER_SOCKET=false
+ENV
+
+no_docker_socket_output="$("$TMP_DIR/start" --instance nodocker)"
+assert_contains "$no_docker_socket_output" "COMPOSE_FILE= args="
+
+running_with_socket_output="$(STUB_RUNNING_MOUNTS='/var/run/docker.sock\n' "$TMP_DIR/start" --instance docker)"
+assert_not_contains "$running_with_socket_output" "args=compose -p docker up"
+
+if running_without_socket_output="$(STUB_RUNNING_MOUNTS='/tmp/code\n' "$TMP_DIR/start" --instance docker 2>&1)"; then
+  echo "Expected start to reject a running container without the requested Docker socket" >&2
+  exit 1
+fi
+assert_contains "$running_without_socket_output" "docker is running with docker.sock mounted=false but DANGEROUSLY_MOUNT_DOCKER_SOCKET=true"
+
+running_without_socket_ok_output="$(STUB_RUNNING_MOUNTS='/tmp/code\n' "$TMP_DIR/start" --instance nodocker)"
+assert_not_contains "$running_without_socket_ok_output" "args=compose -p nodocker up"
+
+if running_with_socket_output="$(STUB_RUNNING_MOUNTS='/tmp/code\n/var/run/docker.sock\n' "$TMP_DIR/start" --instance nodocker 2>&1)"; then
+  echo "Expected start to reject a running container that still has the Docker socket" >&2
+  exit 1
+fi
+assert_contains "$running_with_socket_output" "nodocker is running with docker.sock mounted=true but DANGEROUSLY_MOUNT_DOCKER_SOCKET=false; recreate it with ./build --instance nodocker"
+
+cat > "$TMP_DIR/.env.baddocker" <<'ENV'
+DANGEROUSLY_MOUNT_DOCKER_SOCKET=yes
+ENV
+
+if bad_docker_socket_output="$("$TMP_DIR/start" --instance baddocker 2>&1)"; then
+  echo "Expected start to reject an invalid DANGEROUSLY_MOUNT_DOCKER_SOCKET" >&2
+  exit 1
+fi
+assert_contains "$bad_docker_socket_output" "DANGEROUSLY_MOUNT_DOCKER_SOCKET must be true or false"
 
 start_override_output="$("$TMP_DIR/start" --instance work --ssh-port 3333)"
 assert_contains "$start_override_output" "INSTANCE=work"

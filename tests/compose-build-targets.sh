@@ -25,6 +25,8 @@ assert_not_contains() {
   [[ "$output" != *"$unexpected"* ]] || fail "Expected rendered Compose configuration not to contain: $unexpected"
 }
 
+compose_files=(-f "$ROOT/docker-compose.yml")
+
 render_compose() {
   env -u BUILD_TARGET -u DOCKERFILE -u INSTANCE \
     CODE_DIR=/tmp/code \
@@ -34,7 +36,7 @@ render_compose() {
     SSH_AUTHORIZED_KEYS=test-key \
     USERNAME="${USERNAME-tester}" \
     "$@" \
-    docker compose --env-file "$TMP_DIR/empty.env" -f "$ROOT/docker-compose.yml" config
+    docker compose --env-file "$TMP_DIR/empty.env" "${compose_files[@]}" config
 }
 
 default_config="$(render_compose)"
@@ -47,6 +49,12 @@ assert_contains "$default_config" "target: /tmp/code"
 assert_not_contains "$default_config" "/home/tester"
 assert_not_contains "$default_config" "source: home"
 assert_contains "$default_config" 'shm_size: "1073741824"'
+assert_not_contains "$default_config" "/var/run/docker.sock"
+
+docker_socket_config="$(compose_files+=(-f "$ROOT/docker-compose.docker-socket.yml"); render_compose)"
+assert_contains "$docker_socket_config" "source: /var/run/docker.sock"
+assert_contains "$docker_socket_config" "target: /var/run/docker.sock"
+assert_contains "$docker_socket_config" "target: /tmp/code"
 
 gui_config="$(render_compose BUILD_TARGET=gui)"
 assert_contains "$gui_config" "target: gui"
