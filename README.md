@@ -232,6 +232,8 @@ To add extra mounts without modifying `docker-compose.yml`, copy `docker-compose
 cp docker-compose.override.yml.example docker-compose.override.yml
 ```
 
+`docker-compose.override.yml` applies to every instance. For mounts in only one instance, set `COMPOSE_FILE` in `.env.<instance>`, e.g. `COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml:docker-compose.override.work.yml` (files matching `docker-compose.override.*.yml` are gitignored); Compose skips the automatic override file unless it is listed.
+
 ## Pre-installed Tools
 
 See the [Dockerfile](Dockerfile) for the full list. Highlights:
