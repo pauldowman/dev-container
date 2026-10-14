@@ -52,7 +52,8 @@ if [[ ! -e "$list_file" && ! -L "$list_file" ]]; then
 fi
 [[ -f "$list_file" && -r "$list_file" ]] || fail "cannot read list file: $list_file"
 
-runtime_managed_paths=(.ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock)
+# .cache/dev-container holds dev's once-per-container first-connect marker.
+runtime_managed_paths=(.ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock .cache/dev-container)
 
 overlaps_runtime_managed_path() {
   local entry="$1"

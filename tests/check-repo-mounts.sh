@@ -16,8 +16,13 @@ trap 'rm -rf "$TMP_DIR" "$TMP_DIR-alias"' EXIT
 mkdir -p "$TMP_DIR/bin"
 cat > "$TMP_DIR/bin/docker" <<STUB
 #!/usr/bin/env bash
-[[ "\$*" == "volume inspect repo-volume" ]] || exit 1
-echo '[{"Name":"repo-volume","Options":{"type":"none","o":"bind","device":"$REPO"}}]'
+case "\$*" in
+  "volume inspect repo-volume") echo '[{"Name":"repo-volume","Options":{"type":"none","o":"rbind","device":"$REPO"}}]' ;;
+  "volume inspect plain-volume") echo '[{"Name":"plain-volume","Options":null}]' ;;
+  "volume inspect repo-bind-volume") echo '[{"Name":"repo-bind-volume","Options":{"type":"none","o":"ro, bind","device":"$REPO"}}]' ;;
+  "volume inspect project_scratch") echo '[{"Name":"project_scratch","Options":{"type":"none","o":"bind","device":"$REPO"}}]' ;;
+  *) exit 1 ;;
+esac
 STUB
 chmod +x "$TMP_DIR/bin/docker"
 export DOCKER="$TMP_DIR/bin/docker"
@@ -63,6 +68,8 @@ expect_rejected "named volume binding the repository" compose "{\"services\":{\"
 expect_rejected "secret file in the repository" compose "{\"services\":{\"dev-container\":{}},\"secrets\":{\"env\":{\"file\":\"$REPO/config/work/.env\"}}}"
 expect_rejected "config file in the repository" compose "{\"services\":{\"dev-container\":{}},\"configs\":{\"env\":{\"file\":\"$REPO/config/work/.env\"}}}"
 expect_rejected "external volume binding the repository" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"repo","target":"/x"}]}},"volumes":{"repo":{"name":"repo-volume","external":true}}}'
+expect_rejected "existing volume binding the repository despite declared options" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"scratch","target":"/x"}]}},"volumes":{"scratch":{"name":"project_scratch","driver_opts":{"type":"tmpfs","device":"tmpfs"}}}}'
+expect_rejected "external volume that cannot be inspected" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"gone","target":"/x"}]}},"volumes":{"gone":{"name":"gone-volume","external":true}}}'
 expect_rejected "volumes_from" compose '{"services":{"dev-container":{"volumes_from":["other"]}}}'
 
 grep -Fq "mount source $REPO/scripts exposes the repository" <("$CHECK" compose "$REPO" "$ALLOWED" <<< "$(compose_with_bind "$REPO/scripts")" 2>&1 || true) || fail "Errors must name the offending source"
@@ -78,6 +85,9 @@ expect_accepted "no volumes" compose '{"services":{"dev-container":{}}}'
 
 expect_rejected "running container mounting the repository" inspect "[{\"Name\":\"/work\",\"Mounts\":[{\"Type\":\"bind\",\"Source\":\"$TMP_DIR\",\"Destination\":\"$TMP_DIR\"}]}]"
 expect_rejected "running container with a volume binding the repository" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"repo-volume","Source":"/var/lib/docker/volumes/repo-volume/_data","Destination":"/x"}]}]'
+expect_rejected "running container with a plain bind volume (spaced options) of the repository" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"repo-bind-volume","Destination":"/x"}]}]'
+expect_rejected "running container with a volume that cannot be inspected" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"gone-volume","Destination":"/x"}]}]'
+expect_accepted "running container with a plain volume" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"plain-volume","Destination":"/x"}]}]'
 expect_rejected "running container with volumes_from" inspect '[{"Name":"/work","HostConfig":{"VolumesFrom":["other"]},"Mounts":[]}]'
 expect_accepted "running container mounting only allowed paths" inspect "[{\"Name\":\"/work\",\"Mounts\":[{\"Type\":\"bind\",\"Source\":\"$ALLOWED\",\"Destination\":\"/var/lib/dev-container/data\"},{\"Type\":\"bind\",\"Source\":\"$TMP_DIR/code\",\"Destination\":\"$TMP_DIR/code\"},{\"Type\":\"volume\",\"Source\":\"/var/lib/docker/volumes/x/_data\",\"Destination\":\"/x\"}]}]"
 

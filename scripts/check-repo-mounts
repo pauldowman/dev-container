@@ -34,12 +34,14 @@ def bind_device(options):
     """The host path of a local-driver volume that bind-mounts one, else None."""
     options = options or {}
     device = options.get("device")
-    if device and "bind" in (options.get("o") or "").split(",") and device.startswith("/"):
+    mount_options = [option.strip() for option in (options.get("o") or "").split(",")]
+    if device and ("bind" in mount_options or "rbind" in mount_options) and device.startswith("/"):
         return device
     return None
 
 
-def docker_volume_device(name):
+def docker_volume_options(name):
+    """The volume's driver options, or None when it cannot be inspected."""
     result = subprocess.run(
         [os.environ.get("DOCKER", "docker"), "volume", "inspect", name],
         capture_output=True, text=True,
@@ -47,7 +49,7 @@ def docker_volume_device(name):
     if result.returncode != 0:
         return None
     volumes = json.loads(result.stdout)
-    return bind_device(volumes[0].get("Options")) if volumes else None
+    return (volumes[0].get("Options") or {}) if volumes else None
 
 
 def compose_host_paths(config):
@@ -64,11 +66,18 @@ def compose_host_paths(config):
                 yield name, volume["source"], None
             elif volume.get("type") == "volume" and volume.get("source"):
                 declared = named_volumes.get(volume["source"]) or {}
-                device = bind_device(declared.get("driver_opts"))
-                if device is None:
-                    device = docker_volume_device(declared.get("name", volume["source"]))
-                if device:
-                    yield name, device, None
+                # Compose reuses an existing volume of that name whatever its
+                # declared options, so check both; a missing volume is created
+                # from the declared options unless it must already exist.
+                volume_name = declared.get("name", volume["source"])
+                existing = docker_volume_options(volume_name)
+                if existing is None and declared.get("external"):
+                    yield name, None, f"cannot inspect external volume {volume_name}"
+                    continue
+                for options in (declared.get("driver_opts"), existing):
+                    device = bind_device(options)
+                    if device:
+                        yield name, device, None
 
 
 def inspect_host_paths(containers):
@@ -80,7 +89,11 @@ def inspect_host_paths(containers):
             if mount.get("Type") == "bind":
                 yield name, mount["Source"], None
             elif mount.get("Type") == "volume" and mount.get("Name"):
-                device = docker_volume_device(mount["Name"])
+                options = docker_volume_options(mount["Name"])
+                if options is None:
+                    yield name, None, f"cannot inspect volume {mount['Name']}"
+                    continue
+                device = bind_device(options)
                 if device:
                     yield name, device, None
 

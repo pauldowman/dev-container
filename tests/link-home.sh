@@ -146,15 +146,15 @@ expect_failure "missing source entry" link
 grep -Fq "$LIST:3:" "$TMP_DIR/failure-output" || fail "Errors must name the list file and line"
 [[ ! -e "$DESTINATION/file" ]] || fail "A missing entry left a partial overlay"
 
-for reserved_path in .ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock .ssh; do
+for reserved_path in .ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock .ssh .cache/dev-container .cache; do
   fixture_name="reserved-$(printf '%s' "$reserved_path" | tr -c 'a-z' '_')"
   new_fixture "$fixture_name"
-  mkdir -p "$SOURCE/.ssh"
+  mkdir -p "$SOURCE/.ssh" "$SOURCE/.cache"
   printf 'reserved\n' > "$SOURCE/.ssh/authorized_keys"
   [[ -e "$SOURCE/$reserved_path" ]] || printf 'reserved\n' > "$SOURCE/$reserved_path"
   printf '%s\n' "$reserved_path" > "$LIST"
   expect_failure "runtime-managed path $reserved_path" link
-  [[ ! -e "$DESTINATION/.ssh" ]] || fail "Created runtime-managed path $reserved_path"
+  [[ ! -e "$DESTINATION/.ssh" && ! -e "$DESTINATION/.cache" ]] || fail "Created runtime-managed path $reserved_path"
 done
 
 new_fixture reserved-descendant
