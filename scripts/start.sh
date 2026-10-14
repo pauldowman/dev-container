@@ -1,15 +1,11 @@
 #!/bin/sh
 set -e
 
-if [ -z "${DEV_CONTAINER_REPO_DIR:-}" ]; then
-  echo "Error: DEV_CONTAINER_REPO_DIR must be set by the host launcher" >&2
-  exit 1
-fi
-
-persistent_home="$DEV_CONTAINER_REPO_DIR/data/home"
+data_dir=/var/lib/dev-container/data
+persistent_home="$data_dir/home"
 sudo mkdir -p "$persistent_home"
 sudo chown "$(id -u):$(id -g)" "$persistent_home"
-/usr/local/bin/link-home "$persistent_home" "$DEV_CONTAINER_REPO_DIR/data/persist" "$HOME"
+/usr/local/bin/link-home "$persistent_home" "$data_dir/persist" "$HOME"
 
 mkdir -p ~/.ssh
 echo "$SSH_AUTHORIZED_KEYS" >~/.ssh/authorized_keys
@@ -26,7 +22,16 @@ if [ -S /var/run/docker.sock ]; then
 fi
 
 sudo mkdir -p /run/sshd
-sudo update-ca-certificates >/dev/null
+
+# Copied rather than bind-mounted: the container can replace data/certs with a
+# symlink, which Docker would resolve on the host when recreating a nested mount.
+cert_dir=/usr/local/share/ca-certificates/dev-container
+sudo rm -rf "$cert_dir"
+sudo mkdir -p "$cert_dir"
+if [ -d "$data_dir/certs" ]; then
+  sudo find "$data_dir/certs" -maxdepth 1 -type f -name '*.crt' -exec cp -- {} "$cert_dir/" \;
+fi
+sudo update-ca-certificates --fresh >/dev/null
 
 # Keep ~/.ssh/agent.sock pointing at an agent with the signing key even when
 # no shell or connection triggers a repair (see scripts/ssh-agent-relink)

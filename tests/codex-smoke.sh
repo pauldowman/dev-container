@@ -30,18 +30,21 @@ ssh-keygen -q -t ed25519 -N '' -f "$FIXTURE_ROOT/login-key"
 mkdir -p "$FIXTURE_ROOT/repo/data/home"
 printf 'listed\n' > "$FIXTURE_ROOT/repo/data/home/.persist-smoke"
 printf '.persist-smoke\n' > "$FIXTURE_ROOT/repo/data/persist"
+mkdir -p "$FIXTURE_ROOT/repo/data/certs"
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=dev-container smoke test" \
+  -keyout "$FIXTURE_ROOT/smoke.key" -out "$FIXTURE_ROOT/repo/data/certs/smoke-test.crt" 2>/dev/null
 username="$(docker run --rm --entrypoint id "$IMAGE" -un)"
 
 container_id="$(docker run -d \
   --name "$CONTAINER_NAME" \
   --env CODE_DIR="$FIXTURE_ROOT" \
-  --env DEV_CONTAINER_REPO_DIR="$FIXTURE_ROOT/repo" \
   --env SSH_AUTHORIZED_KEYS="$(cat "$FIXTURE_ROOT/login-key.pub")" \
   --volume "$FIXTURE_ROOT:$FIXTURE_ROOT" \
+  --volume "$FIXTURE_ROOT/repo/data:/var/lib/dev-container/data" \
   "$IMAGE")"
 
 literal_dollar='$'
-remote_check="test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\" && zsh -ic 'test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\"' && codex --version >/dev/null && test -L \"${literal_dollar}HOME/.persist-smoke\""
+remote_check="test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\" && zsh -ic 'test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\"' && codex --version >/dev/null && test -L \"${literal_dollar}HOME/.persist-smoke\" && test -e /etc/ssl/certs/smoke-test.pem"
 
 ssh_ready=false
 for _ in {1..60}; do

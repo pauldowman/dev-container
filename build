@@ -26,7 +26,7 @@ validate_build_configuration() {
   esac
 }
 
-validate_repo_location() {
+validate_code_dir() {
   if [[ -z "${CODE_DIR:-}" ]]; then
     echo "Error: CODE_DIR must be set in $INSTANCE_CONFIG_DIR/.env" >&2
     exit 1
@@ -45,16 +45,6 @@ validate_repo_location() {
     echo "Error: CODE_DIR must be a canonical path without symlinks or trailing components" >&2
     exit 1
   fi
-
-  case "$SCRIPT_DIR" in
-    "$canonical_code_dir"|"$canonical_code_dir"/*) ;;
-    *)
-      echo "Error: repository path must be inside CODE_DIR" >&2
-      exit 1
-      ;;
-  esac
-
-  DEV_CONTAINER_REPO_DIR="$SCRIPT_DIR"
 }
 
 case "${1:-}" in
@@ -65,10 +55,10 @@ esac
 select_instance "$1"
 shift
 validate_build_configuration
-validate_repo_location
+validate_code_dir
 set_compose_args
 
 cd "${SCRIPT_DIR}"
-env BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" docker compose "${COMPOSE_ARGS[@]}" down --remove-orphans
+env BUILD_TARGET="$BUILD_TARGET" docker compose "${COMPOSE_ARGS[@]}" down --remove-orphans
 docker rm -f "$INSTANCE" 2>/dev/null || true
-env BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" docker compose "${COMPOSE_ARGS[@]}" build "$@"
+env BUILD_TARGET="$BUILD_TARGET" docker compose "${COMPOSE_ARGS[@]}" build "$@"

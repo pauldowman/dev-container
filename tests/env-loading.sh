@@ -90,7 +90,7 @@ expect_failure() {
 write_config() {
   local instance="$1"
 
-  mkdir -p "$TMP_DIR/config/$instance"
+  mkdir -p "$TMP_DIR/config/$instance" "$TMP_DIR/data/$instance"
   cat > "$TMP_DIR/config/$instance/.env"
 }
 
@@ -135,10 +135,18 @@ start_output="$("$TMP_DIR/start" work)"
 assert_contains "$start_output" "INSTANCE=work"
 assert_contains "$start_output" "SSH_PORT=2223"
 assert_contains "$start_output" "CODE_DIR=$TMP_DIR"
-assert_contains "$start_output" "DEV_CONTAINER_REPO_DIR=$TMP_DIR"
 assert_contains "$start_output" "BUILD_TARGET=gui"
+assert_contains "$start_output" "DEV_CONTAINER_REPO_DIR= "
 assert_contains "$start_output" "args=$(compose_prefix work) up -d"
 [[ -d "$TMP_DIR/config/work/install" ]] || { echo "Expected start to create config/work/install" >&2; exit 1; }
+[[ -d "$TMP_DIR/data/work/home" ]] || { echo "Expected start to create data/work/home" >&2; exit 1; }
+
+write_config nodata <<ENV
+CODE_DIR=$TMP_DIR
+ENV
+rmdir "$TMP_DIR/data/nodata"
+expect_failure "create $TMP_DIR/data/nodata" "$TMP_DIR/start" nodata
+[[ ! -e "$TMP_DIR/data/nodata" ]] || { echo "start must not create a missing data directory" >&2; exit 1; }
 
 scratch_output="$("$TMP_DIR/start" scratch)"
 assert_contains "$scratch_output" "INSTANCE=scratch"
@@ -195,8 +203,8 @@ assert_contains "$start_override_output" "SSH_PORT=3333"
 
 build_output="$("$TMP_DIR/build" work --progress plain)"
 assert_contains "$build_output" "INSTANCE=work"
-assert_contains "$build_output" "DEV_CONTAINER_REPO_DIR=$TMP_DIR"
 assert_contains "$build_output" "BUILD_TARGET=gui"
+assert_contains "$build_output" "DEV_CONTAINER_REPO_DIR= "
 assert_contains "$build_output" "args=$(compose_prefix work) -f $TMP_DIR/config/work/docker-compose.override.yml down --remove-orphans"
 assert_contains "$build_output" "args=$(compose_prefix work) -f $TMP_DIR/config/work/docker-compose.override.yml build --progress plain"
 
@@ -225,8 +233,8 @@ mkdir "$TMP_DIR/not-repo-parent"
 write_config outside <<ENV
 CODE_DIR=$TMP_DIR/not-repo-parent
 ENV
-expect_failure "repository path must be inside CODE_DIR" "$TMP_DIR/build" outside
-expect_failure "repository path must be inside CODE_DIR" "$TMP_DIR/start" outside
+"$TMP_DIR/build" outside >/dev/null
+assert_contains "$("$TMP_DIR/start" outside)" "CODE_DIR=$TMP_DIR/not-repo-parent"
 
 write_config relative <<'ENV'
 CODE_DIR=.

@@ -23,9 +23,8 @@ services:
       - SSH_AUTHORIZED_KEYS
       - TZ
       - CODE_DIR
-      - DEV_CONTAINER_REPO_DIR
     volumes:
       - ${CODE_DIR:?Set CODE_DIR in config/<instance>/.env}:${CODE_DIR}
-      - ./data/certs:/usr/local/share/ca-certificates/extra:ro
+      - ./data/${INSTANCE:?Pass the instance name to ./build, ./start or ./dev}:/var/lib/dev-container/data
       - /etc/localtime:/etc/localtime:ro
     restart: always

@@ -31,7 +31,6 @@ render_compose() {
   env -u BUILD_TARGET -u DOCKERFILE \
     INSTANCE=main \
     CODE_DIR=/tmp/code \
-    DEV_CONTAINER_REPO_DIR=/tmp/code/dev-container \
     DOTFILES_INSTALL_CMD="${DOTFILES_INSTALL_CMD-}" \
     DOTFILES_REPO="${DOTFILES_REPO-}" \
     SSH_AUTHORIZED_KEYS=test-key \
@@ -45,7 +44,10 @@ assert_contains "$default_config" "dockerfile: Dockerfile"
 assert_contains "$default_config" "target: base"
 assert_contains "$default_config" "image: dev-container:main-base"
 assert_contains "$default_config" "instance-install: $ROOT/config/main/install"
-assert_contains "$default_config" "DEV_CONTAINER_REPO_DIR: /tmp/code/dev-container"
+assert_not_contains "$default_config" "DEV_CONTAINER_REPO_DIR"
+assert_contains "$default_config" "source: $ROOT/data/main"
+assert_contains "$default_config" "target: /var/lib/dev-container/data"
+assert_not_contains "$default_config" "ca-certificates"
 assert_contains "$default_config" "source: /tmp/code"
 assert_contains "$default_config" "target: /tmp/code"
 assert_not_contains "$default_config" "/home/tester"
@@ -64,14 +66,14 @@ assert_contains "$gui_config" "image: dev-container:main-gui"
 
 work_base_config="$(render_compose INSTANCE=work BUILD_TARGET=base)"
 assert_contains "$work_base_config" "image: dev-container:work-base"
-assert_contains "$work_base_config" "DEV_CONTAINER_REPO_DIR: /tmp/code/dev-container"
+assert_contains "$work_base_config" "source: $ROOT/data/work"
 
 work_gui_config="$(render_compose INSTANCE=work BUILD_TARGET=gui)"
 assert_contains "$work_gui_config" "image: dev-container:work-gui"
 
 personal_base_config="$(render_compose INSTANCE=personal BUILD_TARGET=base)"
 assert_contains "$personal_base_config" "image: dev-container:personal-base"
-assert_contains "$personal_base_config" "DEV_CONTAINER_REPO_DIR: /tmp/code/dev-container"
+assert_contains "$personal_base_config" "source: $ROOT/data/personal"
 
 argument_config="$(USERNAME=alice DOTFILES_REPO=https://example.test/dotfiles.git DOTFILES_INSTALL_CMD=setup.sh render_compose)"
 assert_contains "$argument_config" "USERNAME: alice"
@@ -101,7 +103,7 @@ services:
       - /instance-override:/instance-override
 YAML
 
-helper_config="$(cd "$fixture_repo" && env -u USERNAME -u INSTANCE -u COMPOSE_FILE SSH_AUTHORIZED_KEYS=test-key DEV_CONTAINER_REPO_DIR=/tmp/code/dev-container \
+helper_config="$(cd "$fixture_repo" && env -u USERNAME -u INSTANCE -u COMPOSE_FILE SSH_AUTHORIZED_KEYS=test-key \
   bash -c 'SCRIPT_DIR="$PWD"; source "$1"; select_instance work; set_compose_args; docker compose "${COMPOSE_ARGS[@]}" config' _ "$ROOT/scripts/env.sh")"
 assert_contains "$helper_config" "source: /instance-override"
 assert_not_contains "$helper_config" "/root-override"
