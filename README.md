@@ -7,6 +7,10 @@ A Docker-based development environment with SSH access, supporting multiple lang
 
 ## Setup
 
+Clone this repository outside your code directory and outside anything else you mount into a container, for example to `~/dev-container`. Your host runs its scripts and reads its configuration and `.git`, so a container that could write to it could get code run on your host. `./start` checks the Compose configuration and refuses to start while any mount exposes the repository; the only part a container sees is its own `data/<instance>/`. `./start` needs `python3` on the host for this check (on macOS it comes with the Command Line Tools). Start containers only through `./start`: a hand-run `docker compose up` is not checked.
+
+To change this repository, edit it on the host, or work in a separate clone inside your code directory, push from there, and pull into the host copy through the remote. Don't fetch into the host copy directly from the in-container clone's path, since that runs `git` on the host against a repository containers can write.
+
 Each instance is a directory under the gitignored `config/`; its name is the instance name. Create one by copying `.env.example` into it and configuring it:
 
 ```bash
@@ -26,7 +30,7 @@ To rebuild the image later, run `./build work` again; it stops the existing cont
 Set up shell integration (adds the `dev` command and tab completion):
 
 ```bash
-eval "$(~/code/dev-container/dev --init)"
+eval "$(~/dev-container/dev --init)"
 ```
 
 Add this to your `~/.zshrc` to load it automatically.
@@ -151,7 +155,7 @@ The GUI target installs Google Chrome (amd64 or arm64, matching the image) as XF
 
 The container home has no Docker volume. It survives an ordinary process or container restart, but a container recreation starts again from the image and discards home changes that were not explicitly persisted. Code survives because `CODE_DIR` is host-mounted.
 
-Each instance has its own data directory, `data/<instance>/` in this repository (gitignored), which must exist before `./start <instance>`. It is mounted at `/var/lib/dev-container/data` in that instance's container only, so instances do not see each other's data as long as this repository is not inside a container mount such as `CODE_DIR`. Persistence is one tree plus a list inside it:
+Each instance has its own data directory, `data/<instance>/` in this repository (gitignored), which must exist before `./start <instance>`. It is mounted at `/var/lib/dev-container/data` in that instance's container only, so instances do not see each other's data; `./start` refuses to run while this repository is inside a container mount such as `CODE_DIR`. Persistence is one tree plus a list inside it:
 
 - `data/<instance>/home/` mirrors your home directory and holds the persisted files and directories, e.g. `data/<instance>/home/.config/tool/state.json` or the directory `data/<instance>/home/.claude/projects`.
 - `data/<instance>/persist` lists the home-relative paths to persist, one per line. Blank lines and lines starting with `#` are ignored, and a trailing `/` is allowed.

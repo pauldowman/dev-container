@@ -117,8 +117,12 @@ mkdir -p "$data_dir/home"
 
 cd "${SCRIPT_DIR}"
 
+compose_config="$(env BUILD_TARGET="$BUILD_TARGET" SSH_PORT="$SSH_PORT" docker compose "${COMPOSE_ARGS[@]}" config --format json)"
+"$SCRIPT_DIR/scripts/check-repo-mounts" compose "$SCRIPT_DIR" "$data_dir" <<< "$compose_config"
+
 container_id="$(env BUILD_TARGET="$BUILD_TARGET" SSH_PORT="$SSH_PORT" docker compose "${COMPOSE_ARGS[@]}" ps -q dev-container 2>/dev/null || true)"
 if [[ -n "$container_id" && "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)" == "true" ]]; then
+  "$SCRIPT_DIR/scripts/check-repo-mounts" inspect "$SCRIPT_DIR" "$data_dir" <<< "$(docker inspect "$container_id")"
   check_running_docker_socket_mount "$container_id"
 else
   echo "Starting $INSTANCE..."

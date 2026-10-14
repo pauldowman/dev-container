@@ -109,3 +109,27 @@ assert_contains "$helper_config" "source: /instance-override"
 assert_not_contains "$helper_config" "/root-override"
 assert_not_contains "$helper_config" "from-root-env"
 assert_contains "$helper_config" "instance-install: $fixture_repo/config/work/install"
+
+check_rendered() {
+  local code_dir="$1"
+  shift
+
+  env -u BUILD_TARGET -u DOCKERFILE INSTANCE=main CODE_DIR="$code_dir" SSH_AUTHORIZED_KEYS=test-key \
+    docker compose --env-file "$TMP_DIR/empty.env" "$@" config --format json |
+    "$ROOT/scripts/check-repo-mounts" compose "$ROOT" "$ROOT/data/main"
+}
+
+override_file="$TMP_DIR/override.yml"
+cat > "$override_file" <<'YAML'
+services:
+  dev-container:
+    volumes:
+      - /instance-override:/instance-override
+YAML
+
+check_rendered /tmp/code -f "$ROOT/docker-compose.yml" || fail "Expected the base configuration to pass the repository mount check"
+check_rendered /tmp/code -f "$ROOT/docker-compose.yml" -f "$override_file" || fail "Expected an unrelated override mount to pass the repository mount check"
+check_rendered /tmp/code -f "$ROOT/docker-compose.yml" -f "$ROOT/docker-compose.docker-socket.yml" || fail "Expected the Docker socket mount to pass the repository mount check"
+if check_rendered "$(dirname "$ROOT")" -f "$ROOT/docker-compose.yml" 2>/dev/null; then
+  fail "Expected a CODE_DIR containing the repository to fail the repository mount check"
+fi

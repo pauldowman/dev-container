@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Refuse container mounts that expose this repository.
+
+The host executes or reads this repository's scripts, Compose files, config and
+.git, so a container that can write any of them can run code on the host. The
+only part a container may see is its own data directory, data/<instance>.
+
+Usage: check-repo-mounts compose|inspect REPO DATA_DIR < JSON
+
+`compose` reads `docker compose config --format json`; `inspect` reads
+`docker inspect <container>`. Named volumes are looked up with
+`docker volume inspect` (the command is taken from $DOCKER, default `docker`).
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+
+def canonical(path):
+    # realpath resolves the deepest existing ancestor and keeps the rest, which
+    # matters because Docker creates missing bind sources.
+    path = os.path.realpath(path)
+    # APFS and HFS+ are case-insensitive by default.
+    return path.casefold() if sys.platform == "darwin" else path
+
+
+def is_same_or_descendant(path, parent):
+    return path == parent or parent == "/" or path.startswith(parent + "/")
+
+
+def bind_device(options):
+    """The host path of a local-driver volume that bind-mounts one, else None."""
+    options = options or {}
+    device = options.get("device")
+    if device and "bind" in (options.get("o") or "").split(",") and device.startswith("/"):
+        return device
+    return None
+
+
+def docker_volume_device(name):
+    result = subprocess.run(
+        [os.environ.get("DOCKER", "docker"), "volume", "inspect", name],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return None
+    volumes = json.loads(result.stdout)
+    return bind_device(volumes[0].get("Options")) if volumes else None
+
+
+def compose_host_paths(config):
+    named_volumes = config.get("volumes") or {}
+    for kind in ("secrets", "configs"):
+        for name, entry in (config.get(kind) or {}).items():
+            if (entry or {}).get("file"):
+                yield f"{kind}.{name}", entry["file"], None
+    for name, service in (config.get("services") or {}).items():
+        if service.get("volumes_from"):
+            yield name, None, "volumes_from cannot be checked before the container exists"
+        for volume in service.get("volumes") or []:
+            if volume.get("type") == "bind":
+                yield name, volume["source"], None
+            elif volume.get("type") == "volume" and volume.get("source"):
+                declared = named_volumes.get(volume["source"]) or {}
+                device = bind_device(declared.get("driver_opts"))
+                if device is None:
+                    device = docker_volume_device(declared.get("name", volume["source"]))
+                if device:
+                    yield name, device, None
+
+
+def inspect_host_paths(containers):
+    for container in containers:
+        name = container.get("Name", "").lstrip("/") or "container"
+        if (container.get("HostConfig") or {}).get("VolumesFrom"):
+            yield name, None, "volumes_from cannot be checked"
+        for mount in container.get("Mounts") or []:
+            if mount.get("Type") == "bind":
+                yield name, mount["Source"], None
+            elif mount.get("Type") == "volume" and mount.get("Name"):
+                device = docker_volume_device(mount["Name"])
+                if device:
+                    yield name, device, None
+
+
+def main():
+    if len(sys.argv) != 4 or sys.argv[1] not in ("compose", "inspect"):
+        sys.exit("usage: check-repo-mounts compose|inspect REPO DATA_DIR < JSON")
+
+    mode, repo, data_dir = sys.argv[1], canonical(sys.argv[2]), sys.argv[3]
+    allowed = canonical(data_dir)
+    if allowed != os.path.join(repo, "data", os.path.basename(allowed)) or os.path.islink(data_dir):
+        sys.exit(f"Error: {data_dir} must be a real directory directly under {repo}/data, not a symlink")
+
+    data = json.load(sys.stdin)
+    paths = compose_host_paths(data) if mode == "compose" else inspect_host_paths(data)
+
+    problems = []
+    for name, source, problem in paths:
+        if problem:
+            problems.append(f"{name}: {problem}")
+            continue
+        path = canonical(source)
+        if path == allowed:
+            continue
+        if is_same_or_descendant(repo, path) or is_same_or_descendant(path, repo):
+            problems.append(f"{name}: mount source {source} exposes the repository {repo}")
+
+    if problems:
+        for problem in problems:
+            print(f"Error: {problem}", file=sys.stderr)
+        print("Move this repository outside every container mount (such as CODE_DIR); only its own data directory may be mounted.", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

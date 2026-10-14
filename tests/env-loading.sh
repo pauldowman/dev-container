@@ -3,13 +3,14 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+CODE_ROOT="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR" "$CODE_ROOT" "$CODE_ROOT-alias"' EXIT
 unset BUILD_TARGET DOCKERFILE COMPOSE_FILE DANGEROUSLY_MOUNT_DOCKER_SOCKET INSTANCE GH_TOKEN SSH_PORT CODE_DIR USERNAME
 
 copy_runtime() {
   mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/bin"
   cp "$ROOT/build" "$ROOT/start" "$ROOT/dev" "$TMP_DIR/"
-  cp "$ROOT/scripts/env.sh" "$TMP_DIR/scripts/"
+  cp "$ROOT/scripts/env.sh" "$ROOT/scripts/check-repo-mounts" "$TMP_DIR/scripts/"
 }
 
 write_stubs() {
@@ -22,6 +23,20 @@ if [[ "$*" == *" port dev-container 22"* ]]; then
 fi
 if [[ "$*" == *" ps -q dev-container"* ]]; then
   [[ -n "${STUB_RUNNING_MOUNTS+x}" ]] && echo "running-container-id"
+  exit 0
+fi
+bind() {
+  printf '{"Type":"bind","type":"bind","Source":"%s","source":"%s","target":"/x"}' "$1" "$1"
+}
+mounts="$(bind "$CODE_DIR"),$(bind "$TMP_DIR/data/$INSTANCE")"
+if [[ "$*" == *" config --format json"* ]]; then
+  [[ -n "${STUB_EXTRA_MOUNT:-}" ]] && mounts+=",$(bind "$STUB_EXTRA_MOUNT")"
+  printf '{"services":{"dev-container":{"volumes":[%s]}}}\n' "$mounts"
+  exit 0
+fi
+if [[ "$*" == "inspect running-container-id" ]]; then
+  [[ -n "${STUB_RUNNING_EXTRA_MOUNT:-}" ]] && mounts+=",$(bind "$STUB_RUNNING_EXTRA_MOUNT")"
+  printf '[{"Name":"/%s","Mounts":[%s]}]\n' "$INSTANCE" "$mounts"
   exit 0
 fi
 if [[ "${1:-}" == "inspect" && "$*" == *".Mounts"* ]]; then
@@ -114,7 +129,7 @@ GH_TOKEN=root-token
 ENV
 
 write_config work <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 BUILD_TARGET=gui
 GH_TOKEN=work-token
 INSTANCE=bad/name
@@ -123,7 +138,7 @@ USERNAME=tester
 ENV
 
 write_config scratch <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 ENV
 
 for script in build start dev; do
@@ -134,7 +149,7 @@ done
 start_output="$("$TMP_DIR/start" work)"
 assert_contains "$start_output" "INSTANCE=work"
 assert_contains "$start_output" "SSH_PORT=2223"
-assert_contains "$start_output" "CODE_DIR=$TMP_DIR"
+assert_contains "$start_output" "CODE_DIR=$CODE_ROOT "
 assert_contains "$start_output" "BUILD_TARGET=gui"
 assert_contains "$start_output" "DEV_CONTAINER_REPO_DIR= "
 assert_contains "$start_output" "args=$(compose_prefix work) up -d"
@@ -142,7 +157,7 @@ assert_contains "$start_output" "args=$(compose_prefix work) up -d"
 [[ -d "$TMP_DIR/data/work/home" ]] || { echo "Expected start to create data/work/home" >&2; exit 1; }
 
 write_config nodata <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 ENV
 rmdir "$TMP_DIR/data/nodata"
 expect_failure "create $TMP_DIR/data/nodata" "$TMP_DIR/start" nodata
@@ -159,7 +174,7 @@ override_output="$("$TMP_DIR/start" work)"
 assert_contains "$override_output" "args=$(compose_prefix work) -f $TMP_DIR/config/work/docker-compose.override.yml up -d"
 
 write_config docker <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 DANGEROUSLY_MOUNT_DOCKER_SOCKET=true
 ENV
 touch "$TMP_DIR/config/docker/docker-compose.override.yml"
@@ -167,14 +182,14 @@ docker_socket_output="$("$TMP_DIR/start" docker)"
 assert_contains "$docker_socket_output" "args=$(compose_prefix docker) -f $TMP_DIR/config/docker/docker-compose.override.yml -f $TMP_DIR/docker-compose.docker-socket.yml up -d"
 
 write_config nodocker <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 DANGEROUSLY_MOUNT_DOCKER_SOCKET=false
 ENV
 no_docker_socket_output="$("$TMP_DIR/start" nodocker)"
 assert_contains "$no_docker_socket_output" "args=$(compose_prefix nodocker) up -d"
 
 write_config composefile <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 COMPOSE_FILE=docker-compose.yml
 ENV
 for script in build start dev; do
@@ -182,7 +197,7 @@ for script in build start dev; do
 done
 
 write_config baddocker <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 DANGEROUSLY_MOUNT_DOCKER_SOCKET=yes
 ENV
 expect_failure "DANGEROUSLY_MOUNT_DOCKER_SOCKET must be true or false" "$TMP_DIR/start" baddocker
@@ -216,25 +231,25 @@ assert_contains "$nodocker_build_output" "args=$(compose_prefix nodocker) down -
 assert_contains "$nodocker_build_output" "args=$(compose_prefix nodocker) build"
 
 write_config invalid <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 BUILD_TARGET=desktop
 ENV
 expect_failure "BUILD_TARGET must be base or gui" "$TMP_DIR/build" invalid
 expect_failure "BUILD_TARGET must be base or gui" "$TMP_DIR/start" invalid
 
 write_config legacy <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 DOCKERFILE=Dockerfile.gui
 ENV
 expect_failure "DOCKERFILE is obsolete" "$TMP_DIR/build" legacy
 expect_failure "DOCKERFILE is obsolete" "$TMP_DIR/start" legacy
 
-mkdir "$TMP_DIR/not-repo-parent"
+mkdir "$CODE_ROOT/elsewhere"
 write_config outside <<ENV
-CODE_DIR=$TMP_DIR/not-repo-parent
+CODE_DIR=$CODE_ROOT/elsewhere
 ENV
 "$TMP_DIR/build" outside >/dev/null
-assert_contains "$("$TMP_DIR/start" outside)" "CODE_DIR=$TMP_DIR/not-repo-parent"
+assert_contains "$("$TMP_DIR/start" outside)" "CODE_DIR=$CODE_ROOT/elsewhere"
 
 write_config relative <<'ENV'
 CODE_DIR=.
@@ -242,9 +257,9 @@ ENV
 expect_failure "CODE_DIR must be an absolute path" "$TMP_DIR/build" relative
 expect_failure "CODE_DIR must be an absolute path" "$TMP_DIR/start" relative
 
-ln -s "$TMP_DIR" "$TMP_DIR/code-dir-alias"
+ln -s "$CODE_ROOT" "$CODE_ROOT-alias"
 write_config symlink <<ENV
-CODE_DIR=$TMP_DIR/code-dir-alias
+CODE_DIR=$CODE_ROOT-alias
 ENV
 expect_failure "CODE_DIR must be a canonical path" "$TMP_DIR/build" symlink
 expect_failure "CODE_DIR must be a canonical path" "$TMP_DIR/start" symlink
@@ -252,7 +267,7 @@ expect_failure "CODE_DIR must be a canonical path" "$TMP_DIR/start" symlink
 valid_long_instance="$(printf 'a%.0s' {1..123})"
 invalid_long_instance="${valid_long_instance}a"
 write_config "$valid_long_instance" <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 ENV
 "$TMP_DIR/build" "$valid_long_instance" >/dev/null
 "$TMP_DIR/start" "$valid_long_instance" >/dev/null
@@ -265,7 +280,7 @@ expect_failure "instance must start with a lowercase letter or digit" "$TMP_DIR/
 dev_output="$("$TMP_DIR/dev" work project)"
 assert_contains "$dev_output" "Connecting to tester@localhost:2223 (work)..."
 assert_contains "$dev_output" "GH_TOKEN=work-token"
-assert_contains "$dev_output" "-c $TMP_DIR/project"
+assert_contains "$dev_output" "-c $CODE_ROOT/project"
 assert_contains "$(cat "$TMP_DIR/docker.log")" "$(compose_prefix work) -f $TMP_DIR/config/work/docker-compose.override.yml port dev-container 22"
 
 : > "$TMP_DIR/docker.log"
@@ -274,7 +289,7 @@ assert_contains "$list_output" "-p 2222 localhost tmux list-sessions"
 assert_not_contains "$list_output" "localhost GH_TOKEN="
 assert_contains "$(cat "$TMP_DIR/docker.log")" "$(compose_prefix docker) -f $TMP_DIR/config/docker/docker-compose.override.yml -f $TMP_DIR/docker-compose.docker-socket.yml port dev-container 22"
 
-[[ "$("$TMP_DIR/dev" work --code-dir)" == "$TMP_DIR" ]] || { echo "Expected dev --code-dir to print CODE_DIR" >&2; exit 1; }
+[[ "$("$TMP_DIR/dev" work --code-dir)" == "$CODE_ROOT" ]] || { echo "Expected dev --code-dir to print CODE_DIR" >&2; exit 1; }
 
 completion_output="$("$TMP_DIR/dev" --init)"
 assert_contains "$completion_output" "instances=($TMP_DIR/config/*/.env(N:h:t))"
@@ -282,7 +297,7 @@ assert_contains "$completion_output" "$TMP_DIR/dev \"\${words[2]}\" --code-dir"
 assert_contains "$completion_output" "\"dirs:directory: _path_files -/ -W \${(q)code_dir}\""
 
 write_config setup <<ENV
-CODE_DIR=$TMP_DIR
+CODE_DIR=$CODE_ROOT
 FORWARD_PORTS=3000
 ENV
 setup_no_script_output="$("$TMP_DIR/dev" setup project 2>&1)"
@@ -300,3 +315,13 @@ assert_contains "$tmux_call" " -L 3000:localhost:3000"
 
 setup_list_output="$("$TMP_DIR/dev" setup list 2>&1)"
 assert_not_contains "$setup_list_output" "sh -ec"
+
+write_config inside <<ENV
+CODE_DIR=$TMP_DIR
+ENV
+expect_failure "mount source $TMP_DIR exposes the repository" "$TMP_DIR/start" inside
+assert_not_contains "$(cat "$TMP_DIR/docker.log")" "-p inside --env-file $TMP_DIR/config/inside/.env -f $TMP_DIR/docker-compose.yml up -d"
+
+STUB_EXTRA_MOUNT="$TMP_DIR/scripts" expect_failure "mount source $TMP_DIR/scripts exposes the repository" "$TMP_DIR/start" work
+
+STUB_RUNNING_MOUNTS='/tmp/code\n' STUB_RUNNING_EXTRA_MOUNT="$TMP_DIR" expect_failure "nodocker: mount source $TMP_DIR exposes the repository" "$TMP_DIR/start" nodocker
