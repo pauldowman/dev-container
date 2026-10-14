@@ -74,3 +74,40 @@ set_compose_args() {
     COMPOSE_ARGS+=(-f "$SCRIPT_DIR/docker-compose.docker-socket.yml")
   fi
 }
+
+validate_build_configuration() {
+  if [[ -n "${DOCKERFILE+x}" ]]; then
+    echo "Error: DOCKERFILE is obsolete; remove it and use BUILD_TARGET=base or BUILD_TARGET=gui" >&2
+    exit 1
+  fi
+
+  BUILD_TARGET="${BUILD_TARGET:-base}"
+  case "$BUILD_TARGET" in
+    base|gui) ;;
+    *)
+      echo "Error: BUILD_TARGET must be base or gui" >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_code_dir() {
+  if [[ -z "${CODE_DIR:-}" ]]; then
+    echo "Error: CODE_DIR must be set in $INSTANCE_CONFIG_DIR/.env" >&2
+    exit 1
+  fi
+  if [[ "$CODE_DIR" != /* ]]; then
+    echo "Error: CODE_DIR must be an absolute path" >&2
+    exit 1
+  fi
+
+  local canonical_code_dir
+  if ! canonical_code_dir="$(cd "$CODE_DIR" 2>/dev/null && pwd -P)"; then
+    echo "Error: CODE_DIR must name an existing directory" >&2
+    exit 1
+  fi
+  if [[ "$CODE_DIR" != "$canonical_code_dir" ]]; then
+    echo "Error: CODE_DIR must be a canonical path without symlinks or trailing components" >&2
+    exit 1
+  fi
+}
