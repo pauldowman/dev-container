@@ -33,6 +33,7 @@ start_container() {
 
 mkdir -p "$PERSISTENT_HOME/.config/tool" "$FIXTURE_ROOT/code/project"
 printf 'persistent\n' > "$PERSISTENT_HOME/.config/tool/state"
+printf '.config/tool/state\n' > "$FIXTURE_ROOT/data/persist"
 printf 'code\n' > "$FIXTURE_ROOT/code/project/marker"
 
 first="$CONTAINER_PREFIX-first"
@@ -40,7 +41,7 @@ start_container "$first"
 docker exec "$first" bash -ceu '
   mkdir -p /home/tester
   printf "ephemeral\n" > /home/tester/unlisted-marker
-  /usr/local/bin/link-home "$PERSISTENT_HOME" /home/tester
+  /usr/local/bin/link-home "$PERSISTENT_HOME" "$FIXTURE_ROOT/data/persist" /home/tester
   test "$(cat /home/tester/.config/tool/state)" = persistent
   test "$(cat "$FIXTURE_ROOT/code/project/marker")" = code
 '
@@ -55,7 +56,7 @@ for container in "$second" "$third"; do
   docker exec "$container" bash -ceu '
     mkdir -p /home/tester
     test ! -e /home/tester/unlisted-marker
-    /usr/local/bin/link-home "$PERSISTENT_HOME" /home/tester
+    /usr/local/bin/link-home "$PERSISTENT_HOME" "$FIXTURE_ROOT/data/persist" /home/tester
     test "$(cat /home/tester/.config/tool/state)" = persistent
     test "$(cat "$FIXTURE_ROOT/code/project/marker")" = code
   '

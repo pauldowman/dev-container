@@ -6,8 +6,8 @@ fail() {
   exit 1
 }
 
-if (( $# != 2 )); then
-  fail "usage: link-home SOURCE_ROOT DESTINATION_ROOT"
+if (( $# != 3 )); then
+  fail "usage: link-home SOURCE_ROOT LIST_FILE DESTINATION_ROOT"
 fi
 
 trim_trailing_slashes() {
@@ -20,7 +20,8 @@ trim_trailing_slashes() {
 }
 
 source_argument="$(trim_trailing_slashes "$1")"
-destination_argument="$(trim_trailing_slashes "$2")"
+list_file="$2"
+destination_argument="$(trim_trailing_slashes "$3")"
 
 [[ -d "$source_argument" ]] || fail "source root is not a directory: $source_argument"
 [[ -d "$destination_argument" ]] || fail "destination root is not a directory: $destination_argument"
@@ -46,16 +47,30 @@ if is_same_or_descendant "$destination_root" "$source_root"; then
   fail "destination root must not be inside source root"
 fi
 
-is_runtime_managed_path() {
-  case "$1" in
-    .ssh/authorized_keys|.ssh/authorized_keys/*|.ssh/id_ed25519.pub|.ssh/id_ed25519.pub/*|.ssh/agent.sock|.ssh/agent.sock/*) return 0 ;;
-    *) return 1 ;;
-  esac
+if [[ ! -e "$list_file" && ! -L "$list_file" ]]; then
+  exit 0
+fi
+[[ -f "$list_file" && -r "$list_file" ]] || fail "cannot read list file: $list_file"
+
+runtime_managed_paths=(.ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock)
+
+overlaps_runtime_managed_path() {
+  local entry="$1"
+  local managed
+
+  for managed in "${runtime_managed_paths[@]}"; do
+    if is_same_or_descendant "$entry" "$managed" || [[ "$managed" == "$entry/"* ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
+# Errors are prefixed with $3 (the list location) when given.
 check_destination_parent() {
   local relative_path="$1"
   local create_missing="$2"
+  local where="${3:+$3: }"
   local parent_relative current component remaining
 
   if [[ "$relative_path" != */* ]]; then
@@ -75,54 +90,93 @@ check_destination_parent() {
     fi
 
     current="$current/$component"
-    [[ ! -L "$current" ]] || fail "destination parent is a symlink: $current"
+    [[ ! -L "$current" ]] || fail "${where}destination parent is a symlink: $current"
 
     if [[ -e "$current" ]]; then
-      [[ -d "$current" ]] || fail "destination parent is not a directory: $current"
+      [[ -d "$current" ]] || fail "${where}destination parent is not a directory: $current"
     elif [[ "$create_missing" == "true" ]]; then
       mkdir -- "$current"
     fi
 
     if [[ -e "$current" ]] && mountpoint -q -- "$current"; then
-      fail "destination parent is a mountpoint: $current"
+      fail "${where}destination parent is a mountpoint: $current"
     fi
   done
 }
 
-validate_destination_parent() {
-  check_destination_parent "$1" false
+check_source_parents() {
+  local entry="$1"
+  local current="$source_root"
+  local component
+
+  IFS=/ read -ra components <<< "$entry"
+  for component in "${components[@]:0:${#components[@]}-1}"; do
+    current="$current/$component"
+    [[ -d "$current" && ! -L "$current" ]] || return 1
+  done
 }
 
-ensure_destination_parent() {
-  check_destination_parent "$1" true
-}
+entries=()
+entry_lines=()
+declare -A seen_entries=()
+line_number=0
 
-source_list="$(mktemp)"
-trap 'rm -f "$source_list"' EXIT
-if ! find "$source_root" \( -type f -o -type l \) -print0 > "$source_list"; then
-  fail "could not enumerate source root: $source_root"
-fi
+while IFS= read -r line || [[ -n "$line" ]]; do
+  line_number=$((line_number + 1))
+  line="${line%$'\r'}"
+  where="$list_file:$line_number"
 
-while IFS= read -r -d '' source_path; do
-  relative_path="${source_path#"$source_root"/}"
-  is_runtime_managed_path "$relative_path" && fail "refusing runtime-managed destination: $relative_path"
+  [[ "$line" =~ ^[[:space:]]*$ || "$line" =~ ^[[:space:]]*# ]] && continue
+  [[ ! "$line" =~ ^[[:space:]] && ! "$line" =~ [[:space:]]$ ]] || fail "$where: entry has leading or trailing whitespace"
 
-  destination_path="$destination_root/$relative_path"
-  if is_same_or_descendant "$destination_path" "$source_root"; then
-    fail "destination maps into source root: $relative_path"
+  [[ "$line" != /* ]] || fail "$where: entry must be relative to the home directory: $line"
+  entry="${line%/}"
+
+  IFS=/ read -ra components <<< "$entry"
+  [[ "$entry" != */ ]] || fail "$where: entry has an empty path component: $line"
+  for component in "${components[@]}"; do
+    case "$component" in
+      "") fail "$where: entry has an empty path component: $line" ;;
+      .|..) fail "$where: entry must not contain . or .. components: $line" ;;
+    esac
+  done
+
+  [[ -z "${seen_entries[$entry]+x}" ]] || fail "$where: duplicate entry: $entry (also line ${seen_entries[$entry]})"
+  seen_entries[$entry]="$line_number"
+
+  if overlaps_runtime_managed_path "$entry"; then
+    fail "$where: refusing runtime-managed path or its ancestor: $entry"
   fi
 
-  validate_destination_parent "$relative_path"
+  destination_path="$destination_root/$entry"
+  if is_same_or_descendant "$destination_path" "$source_root" || is_same_or_descendant "$source_root" "$destination_path"; then
+    fail "$where: entry maps into or over the source root: $entry"
+  fi
+
+  check_source_parents "$entry" || fail "$where: a parent of the source entry is missing or a symlink: $source_root/$entry"
+  [[ -e "$source_root/$entry" || -L "$source_root/$entry" ]] || fail "$where: source entry does not exist: $source_root/$entry"
+
+  check_destination_parent "$entry" false "$where"
   if [[ -e "$destination_path" && ! -L "$destination_path" && ! -f "$destination_path" ]]; then
-    fail "destination exists with an unsupported type: $destination_path"
+    fail "$where: destination exists with an unsupported type: $destination_path"
   fi
-done < "$source_list"
 
-while IFS= read -r -d '' source_path; do
-  relative_path="${source_path#"$source_root"/}"
-  destination_path="$destination_root/$relative_path"
+  entries+=("$entry")
+  entry_lines+=("$line_number")
+done < "$list_file"
 
-  ensure_destination_parent "$relative_path"
+for (( i = 0; i < ${#entries[@]}; i++ )); do
+  for (( j = 0; j < ${#entries[@]}; j++ )); do
+    if (( i != j )) && [[ "${entries[j]}" == "${entries[i]}/"* ]]; then
+      fail "$list_file:${entry_lines[j]}: entry is nested inside ${entries[i]} (line ${entry_lines[i]})"
+    fi
+  done
+done
+
+for entry in "${entries[@]}"; do
+  destination_path="$destination_root/$entry"
+
+  check_destination_parent "$entry" true
 
   if [[ -L "$destination_path" || -f "$destination_path" ]]; then
     rm -f -- "$destination_path"
@@ -130,5 +184,5 @@ while IFS= read -r -d '' source_path; do
     fail "destination exists with an unsupported type: $destination_path"
   fi
 
-  ln -s -- "$source_path" "$destination_path"
-done < "$source_list"
+  ln -s -- "$source_root/$entry" "$destination_path"
+done

@@ -28,6 +28,8 @@ docker run --rm --entrypoint /bin/bash "$IMAGE" -ceu '
 
 ssh-keygen -q -t ed25519 -N '' -f "$FIXTURE_ROOT/login-key"
 mkdir -p "$FIXTURE_ROOT/repo/data/home"
+printf 'listed\n' > "$FIXTURE_ROOT/repo/data/home/.persist-smoke"
+printf '.persist-smoke\n' > "$FIXTURE_ROOT/repo/data/persist"
 username="$(docker run --rm --entrypoint id "$IMAGE" -un)"
 
 container_id="$(docker run -d \
@@ -39,7 +41,7 @@ container_id="$(docker run -d \
   "$IMAGE")"
 
 literal_dollar='$'
-remote_check="test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\" && zsh -ic 'test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\"' && codex --version >/dev/null"
+remote_check="test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\" && zsh -ic 'test \"${literal_dollar}(command -v codex)\" = \"${literal_dollar}HOME/.local/bin/codex\"' && codex --version >/dev/null && test -L \"${literal_dollar}HOME/.persist-smoke\""
 
 ssh_ready=false
 for _ in {1..60}; do

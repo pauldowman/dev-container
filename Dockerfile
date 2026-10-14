@@ -123,7 +123,7 @@ RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') && \
 # state remains in the container home. Loaded from /etc/tmux.conf (read before
 # ~/.tmux.conf) so user dotfiles stay portable to other environments. Plugins
 # live in /opt and are refreshed on rebuild; home state is ephemeral unless
-# individual files are selected through data/home.
+# its path is listed in data/persist.
 RUN git clone --depth 1 https://github.com/tmux-plugins/tmux-resurrect /opt/tmux-plugins/tmux-resurrect && \
     git clone --depth 1 https://github.com/tmux-plugins/tmux-continuum /opt/tmux-plugins/tmux-continuum && \
     printf '%s\n' \

@@ -9,7 +9,7 @@ fi
 persistent_home="$DEV_CONTAINER_REPO_DIR/data/home"
 sudo mkdir -p "$persistent_home"
 sudo chown "$(id -u):$(id -g)" "$persistent_home"
-/usr/local/bin/link-home "$persistent_home" "$HOME"
+/usr/local/bin/link-home "$persistent_home" "$DEV_CONTAINER_REPO_DIR/data/persist" "$HOME"
 
 mkdir -p ~/.ssh
 echo "$SSH_AUTHORIZED_KEYS" >~/.ssh/authorized_keys

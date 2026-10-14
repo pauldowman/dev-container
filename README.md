@@ -71,7 +71,7 @@ Upgrading from the old layout: root `.env`, `.env.<instance>`, `docker-compose.o
 
 [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) and [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) are baked into the image and loaded from `/etc/tmux.conf`, so they apply only inside the container and don't require plugin lines in your own tmux config. Continuum auto-saves every 15 minutes while a client is attached and auto-restores when the tmux server starts; manual save is `prefix + Ctrl-s`, and manual restore is `prefix + Ctrl-r`.
 
-The saved layouts remain available across process and container restarts, but they are discarded when the container is recreated unless their exact files are selected through `data/home`. tmux-resurrect creates newly named state files, and new files are not automatically persistent under the file-level overlay, so this setup does not promise tmux layout restoration after a rebuild. Running programs and shell history are never restored by tmux-resurrect.
+The saved layouts remain available across process and container restarts, but they are discarded when the container is recreated unless their directory is listed in `data/persist`. This setup does not list it by default, so it does not promise tmux layout restoration after a rebuild. Running programs and shell history are never restored by tmux-resurrect.
 
 ## Configuration
 
@@ -115,7 +115,7 @@ mise use --global node@lts
 npx -y skills@latest add -g -y pauldowman/cross-agent-review
 ```
 
-Don't write `~/.zshrc.local` here: if `data/home/.zshrc.local` exists, startup replaces the image's copy with a link to it. Put shell config in your dotfiles or in `data/home/.zshrc.local`.
+Don't write `~/.zshrc.local` here: if `.zshrc.local` is listed in `data/persist`, startup replaces the image's copy with a link to `data/home/.zshrc.local`. Put shell config in your dotfiles or in a persisted `.zshrc.local`.
 
 ### First-connect script
 
@@ -137,9 +137,9 @@ FORWARD_PORTS=3389
 ./start work
 ```
 
-Start `./dev work <session-name>` for an existing code directory and leave that SSH session open; `FORWARD_PORTS=3389` forwards xrdp from the container because Compose does not publish the RDP port directly. Then connect an RDP client to `localhost:3389`; both the xrdp username and password are the configured container username. Only one SSH session can bind that local port at a time. If port 3389 is already in use or two GUI instances must run concurrently, give each instance a different local port in its `config/<instance>/.env`, such as `FORWARD_PORTS=3390:3389`, and connect RDP to `localhost:3390` instead. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless exact files are selected under `data/home`; because keyring applications may replace files atomically, do not assume selecting them is reliable without application-specific testing. If a stale selected keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
+Start `./dev work <session-name>` for an existing code directory and leave that SSH session open; `FORWARD_PORTS=3389` forwards xrdp from the container because Compose does not publish the RDP port directly. Then connect an RDP client to `localhost:3389`; both the xrdp username and password are the configured container username. Only one SSH session can bind that local port at a time. If port 3389 is already in use or two GUI instances must run concurrently, give each instance a different local port in its `config/<instance>/.env`, such as `FORWARD_PORTS=3390:3389`, and connect RDP to `localhost:3390` instead. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless their paths are listed in `data/persist`; because keyring applications may replace files atomically, do not assume persisting them is reliable without application-specific testing. If a stale persisted keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
 
-The GUI target includes `/etc/xdg/autostart/desktop-accessibility.desktop`, which enables `org.a11y.Status.IsEnabled` on the real GUI session bus at login for native accessibility/agent observation. It leaves `ScreenReaderEnabled` unchanged. AT-SPI saves the setting through GSettings/dconf when its schema is available, so it survives logout and login. Container recreation discards settings that were not selected under `data/home`; the autostart entry turns accessibility on again at each GUI login. Launch applications after login so they see the enabled switch. Verify actual application controls as well as the switch: a reachable registry or a registered window frame does not establish a usable browser/page tree. A browser can find the session bus without an exported `DBUS_SESSION_BUS_ADDRESS`; comparing environment variables does not verify accessibility. To check the switch, run `gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Get org.a11y.Status IsEnabled` from the GUI session.
+The GUI target includes `/etc/xdg/autostart/desktop-accessibility.desktop`, which enables `org.a11y.Status.IsEnabled` on the real GUI session bus at login for native accessibility/agent observation. It leaves `ScreenReaderEnabled` unchanged. AT-SPI saves the setting through GSettings/dconf when its schema is available, so it survives logout and login. Container recreation discards settings whose paths are not listed in `data/persist`; the autostart entry turns accessibility on again at each GUI login. Launch applications after login so they see the enabled switch. Verify actual application controls as well as the switch: a reachable registry or a registered window frame does not establish a usable browser/page tree. A browser can find the session bus without an exported `DBUS_SESSION_BUS_ADDRESS`; comparing environment variables does not verify accessibility. To check the switch, run `gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Get org.a11y.Status IsEnabled` from the GUI session.
 
 The GUI target installs Google Chrome (amd64 or arm64, matching the image) as XFCE's preferred web browser and launches it with `--no-sandbox`. Docker's default seccomp profile blocks the namespaces Chrome's sandbox needs, so without that flag, links opened from apps through `xdg-open` fail with "Failed to launch preferred application". Chrome shows a warning bar about the unsupported flag; that is expected.
 
@@ -149,17 +149,66 @@ The GUI target installs Google Chrome (amd64 or arm64, matching the image) as XF
 
 ### Selective Home Persistence
 
-The container home has no Docker volume. It survives an ordinary process or container restart, but a container recreation starts again from the image and discards home changes that were not explicitly selected. Code survives because `CODE_DIR` is host-mounted.
+The container home has no Docker volume. It survives an ordinary process or container restart, but a container recreation starts again from the image and discards home changes that were not explicitly persisted. Code survives because `CODE_DIR` is host-mounted.
 
-The only selective home-persistence source is the gitignored `data/home` directory in this repository. On startup, every regular file or source symlink below it is linked into the same home-relative path: `data/home/.config/tool/state.json` becomes `~/.config/tool/state.json`. Source directories only provide hierarchy, so empty directories have no effect and whole destination directories are never replaced. Every instance on the machine deliberately uses this one shared source, which means simultaneously running instances can contend over mutable selected files.
+Persistence is one tree plus a list, both gitignored in this repository's `data/`:
 
-Before upgrading an installation that still uses the old named home volume, copy each file you want to retain into its exact `data/home` path before running the new `./build`; the build removes the old container, though it does not delete the named volume. Also ensure this repository is inside the canonical `CODE_DIR` configured in the instance's `.env`, remove any obsolete `DOCKERFILE` setting, and use `BUILD_TARGET=base` or `BUILD_TARGET=gui`. For example, run the following from the repository root while the old default container is still running:
+- `data/home/` mirrors your home directory and holds the persisted files and directories, e.g. `data/home/.config/tool/state.json` or the directory `data/home/.claude/projects`.
+- `data/persist` lists the home-relative paths to persist, one per line. Blank lines and lines starting with `#` are ignored, and a trailing `/` is allowed.
+
+```
+# data/persist
+.zshrc.local
+.config/tool/state.json
+.claude/projects/
+```
+
+On startup, each listed path becomes a link `~/<path> -> data/home/<path>`, whether it is a file or a directory; parent directories in your home are created as real directories. Anything in `data/home` that is not listed is ignored, and a missing `data/persist` persists nothing. Every instance run from this repository uses the same `data/`, so simultaneously running instances can contend over mutable persisted files.
+
+Startup validates the whole list before linking anything and stops with an error naming the list line when an entry:
+
+- is absolute, has an empty, `.` or `..` component, or has leading or trailing whitespace;
+- duplicates or is nested inside another entry;
+- does not exist under `data/home`, or is reached through a symlinked directory there (a listed entry may itself be a symlink);
+- is `.ssh/authorized_keys`, `.ssh/id_ed25519.pub` or `.ssh/agent.sock`, something below them, or a directory containing them such as `.ssh`, because startup manages those files;
+- would replace a real directory in the image's home. List the narrowest path instead, e.g. `.claude/projects` rather than `.claude`.
+
+If a listed path prevents startup, inspect `docker logs <instance>` from the host, fix the named line in `data/persist` or the named path under `data/home`, then restart the container; SSH cannot become available until the whole list passes validation.
+
+To persist an existing file or directory, move it to the same path under `data/home`, add the path to `data/persist`, and restart the container so startup creates the link. For a directory that is in use (such as agent session transcripts, where every new session creates a new file), copy it, verify the copy, then switch. For Claude Code sessions (needed by `/resume` and `--continue`), run inside the container after exiting Claude:
+
+```bash
+repo=~/code/dev-container  # path to this repository; SSH sessions do not have $DEV_CONTAINER_REPO_DIR
+mkdir -p "$repo/data/home/.claude" &&
+  cp -a ~/.claude/projects "$repo/data/home/.claude/projects" &&
+  diff -rq ~/.claude/projects "$repo/data/home/.claude/projects" &&
+  mv ~/.claude/projects ~/.claude/projects.premigration &&
+  ln -s "$repo/data/home/.claude/projects" ~/.claude/projects &&
+  echo .claude/projects >> "$repo/data/persist"
+```
+
+The `ln -s` links the running container immediately; a restart or recreation creates the same link. Delete `.premigration` once a rebuild confirms it works. omp sessions work the same way with `.omp/agent/sessions`. Codex sessions are not covered: `codex resume` also depends on versioned SQLite state files in `~/.codex`, and listing the whole of `~/.codex` would shadow the image's Codex package.
+
+Links are only as durable as the application allows. If an application updates a listed file by atomically renaming a replacement over it, the link is lost and later writes remain only in the ephemeral home; list the containing directory instead when that is safe, and verify application behavior before relying on this for important state. Unlisted files—including shell history, caches, credentials, and runtime-installed tools—are discarded on container recreation. `data/` is excluded from both Git and the Docker build context, but it is still ordinary ignored machine data: commands such as `git clean -fdx` can permanently delete it.
+
+Claude Code renames a new `~/.claude/.credentials.json` into place on token refreshes and logins, so a listed copy stops being linked and goes stale. Instead, run `claude setup-token` once (it requires a Claude subscription and prints a long-lived token), add `export CLAUDE_CODE_OAUTH_TOKEN=<token>` to `data/home/.zshrc.local`, which the dotfiles `.zshrc` sources and Claude Code never rewrites, and list `.zshrc.local` in `data/persist`.
+
+Upgrading from the earlier layout, where every file under `data/home` was persisted and directories lived in `data/dirs`: before the next `./build`, seed the list while the old symlinks still exist, then review it:
+
+```bash
+(cd data/home && find . \( -type f -o -type l \) | sed 's|^\./||') > data/persist
+```
+
+Then, for each `data/home/<path>` symlink into `data/dirs`, remove the symlink and move `data/dirs/<path>` to `data/home/<path>`.
+
+Upgrading from the old named home volume: copy each file you want to retain into its exact `data/home` path and list it in `data/persist` before running the new `./build`; the build removes the old container, though it does not delete the named volume. Also remove any obsolete `DOCKERFILE` setting and use `BUILD_TARGET=base` or `BUILD_TARGET=gui`. For example, run the following from the repository root while the old container is still running:
 
 ```bash
 container=dev-container
 container_home="$(docker exec "$container" sh -c 'printf %s "$HOME"')"
 mkdir -p data/home/.config/tool
 docker cp "$container:$container_home/.config/tool/state.json" data/home/.config/tool/state.json
+echo .config/tool/state.json >> data/persist
 ```
 
 Inspect copied entries before rebuilding. Do not migrate a symlink unless its target will still exist after recreation; copy the underlying regular file instead when the old target lived only in the named home volume.
@@ -174,36 +223,10 @@ docker run --rm \
   --mount "type=bind,src=$PWD/data/home,dst=/new-home" \
   ubuntu:24.04 sh -c 'mkdir -p /new-home/.config/tool && cp -a /old-home/.config/tool/state.json /new-home/.config/tool/state.json'
 sudo chown -R "$(id -u):$(id -g)" data/home/.config/tool
+echo .config/tool/state.json >> data/persist
 ```
 
 Verify the copied files and the rebuilt container before optionally removing the old volume with `docker volume rm "${instance}_home"`; that deletion is permanent. The obsolete `dev-container:latest` image can likewise be removed with `docker image rm dev-container:latest` after confirming no container still uses it.
-
-To opt in an existing file, move it to its exact path under `data/home`, then restart the container so startup creates the link. For example, run the following on the host from this repository; replace `dev-container` with the instance name:
-
-```bash
-docker exec dev-container sh -c 'mkdir -p "$DEV_CONTAINER_REPO_DIR/data/home/.config/tool" && mv "$HOME/.config/tool/state.json" "$DEV_CONTAINER_REPO_DIR/data/home/.config/tool/state.json"'
-docker restart dev-container
-```
-
-Persistence is file-grained. If an application updates a file by atomically renaming a replacement over it, the symlink can be lost and later writes remain only in the ephemeral home. Newly named state files are not automatically selected merely because another file in the same directory is selected. Verify application behavior before relying on this mechanism for important state.
-
-Claude Code is one such application: token refreshes and logins rename a new `~/.claude/.credentials.json` into place, so a selected copy stops being linked and goes stale. Instead, run `claude setup-token` once (it requires a Claude subscription and prints a long-lived token) and add `export CLAUDE_CODE_OAUTH_TOKEN=<token>` to `data/home/.zshrc.local`, which the dotfiles `.zshrc` sources and Claude Code never rewrites. Every instance then shares the same credentials without writing them back.
-
-To persist a whole directory, such as agent session transcripts where every new session creates a new file, keep the real directory under `data/dirs` and select it with a relative source symlink. The linker keeps a source symlink as a single leaf and does not descend into it, so the destination becomes a symlink to the directory and new files, including atomically renamed ones, land in persistent storage. For Claude Code sessions (needed by `/resume` and `--continue`), run inside the container after exiting Claude:
-
-```bash
-repo=~/code/dev-container  # path to this repository; SSH sessions do not have $DEV_CONTAINER_REPO_DIR
-mkdir -p ~/.claude/projects "$repo/data/dirs/.claude" "$repo/data/home/.claude" &&
-  mv ~/.claude/projects "$repo/data/dirs/.claude/projects" &&
-  ln -s ../../dirs/.claude/projects "$repo/data/home/.claude/projects" &&
-  ln -s "$repo/data/home/.claude/projects" ~/.claude/projects
-```
-
-The last command links the running container immediately; a restart or recreation creates the same link. omp sessions work the same way with `.omp/agent/sessions`. Startup fails if the destination already exists as a real directory, so move it before restarting. Codex sessions are not covered: `codex resume` also depends on versioned SQLite state files in `~/.codex`, and selecting the whole of `~/.codex` would shadow the image's Codex package.
-
-Startup refuses to select `data/home/.ssh/authorized_keys`, `data/home/.ssh/id_ed25519.pub`, `data/home/.ssh/agent.sock`, or anything below those paths because the runtime manages them. Other unlisted files—including shell history, caches, credentials, and runtime-installed tools—are discarded on container recreation. `data/` is excluded from both Git and the Docker build context, but it is still ordinary ignored machine data: commands such as `git clean -fdx` can permanently delete it.
-
-If a selected path prevents startup, inspect `docker logs <instance>` from the host. Fix or remove the named entry under `data/home`, then restart the container; SSH cannot become available until every selected mapping passes validation.
 
 ### Docker access
 
@@ -240,7 +263,7 @@ See the [Dockerfile](Dockerfile) for the full list. Highlights:
 - **Blockchain:** Foundry (forge, cast, anvil, chisel)
 - **AI:** Claude Code, OpenAI Codex
 
-Codex is installed with OpenAI's standalone installer as the container user. The command is `~/.local/bin/codex`, its user-writable package is under `~/.codex/packages/standalone`, and `/etc/zsh/zshenv` exposes the command to interactive and non-interactive zsh sessions without changing npm's `/usr/local` global prefix. Individual Codex-adjacent files can coexist with that package through the file-level `data/home` overlay, but `auth.json` is not documented as safely persistable because no authenticated rewrite test proves Codex preserves its symlink.
+Codex is installed with OpenAI's standalone installer as the container user. The command is `~/.local/bin/codex`, its user-writable package is under `~/.codex/packages/standalone`, and `/etc/zsh/zshenv` exposes the command to interactive and non-interactive zsh sessions without changing npm's `/usr/local` global prefix. Individual Codex-adjacent files can coexist with that package when listed in `data/persist`, but `auth.json` is not documented as safely persistable because no authenticated rewrite test proves Codex preserves its symlink.
 
 ## Custom CA Certificates
 
