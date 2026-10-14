@@ -1,0 +1,15 @@
+#!/bin/bash
+# Copy this file to config/<instance>/first-connect.sh to run setup that needs GitHub credentials.
+# `dev <instance> <session>` runs it once per container, before attaching tmux, with GH_TOKEN set.
+# It runs with `bash -eo pipefail`, started from your login shell so it sees what your shell config exports.
+# To run it again (for example after editing it), rebuild the container.
+#
+# A failed run is retried on the next connect, so make it safe to rerun, and exit
+# non-zero when setup is incomplete so it is retried.
+#
+# Example: fail until Claude is logged in, so a skipped login-dependent step is retried
+#   $HOME/.local/bin/claude auth status >/dev/null || { echo "Log in to Claude, then reconnect" >&2; exit 1; }
+#
+# Example: install Claude Code plugins from a private marketplace
+#   $HOME/.local/bin/claude plugin marketplace add https://github.com/your-org/private-marketplace.git
+#   $HOME/.local/bin/claude plugin install your-plugin@private-marketplace

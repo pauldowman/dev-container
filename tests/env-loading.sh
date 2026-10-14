@@ -45,7 +45,12 @@ STUB
 exit 0
 STUB
 
-  chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh" "$TMP_DIR/bin/ssh-add"
+  cat > "$TMP_DIR/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo fallback-token
+STUB
+
+  chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh" "$TMP_DIR/bin/ssh-add" "$TMP_DIR/bin/gh"
 }
 
 assert_contains() {
@@ -267,3 +272,23 @@ completion_output="$("$TMP_DIR/dev" --init)"
 assert_contains "$completion_output" "instances=($TMP_DIR/config/*/.env(N:h:t))"
 assert_contains "$completion_output" "$TMP_DIR/dev \"\${words[2]}\" --code-dir"
 assert_contains "$completion_output" "\"dirs:directory: _path_files -/ -W \${(q)code_dir}\""
+
+write_config setup <<ENV
+CODE_DIR=$TMP_DIR
+FORWARD_PORTS=3000
+ENV
+setup_no_script_output="$("$TMP_DIR/dev" setup project 2>&1)"
+assert_not_contains "$setup_no_script_output" "sh -ec"
+
+printf 'echo setup\n' > "$TMP_DIR/config/setup/first-connect.sh"
+setup_output="$("$TMP_DIR/dev" setup project 2>&1)"
+setup_call="$(grep -F 'sh -ec' <<< "$setup_output")"
+tmux_call="$(grep -F 'tmux new-session' <<< "$setup_output")"
+assert_contains "$setup_call" "localhost GH_TOKEN=fallback-token sh -ec"
+assert_not_contains "$setup_call" " -L "
+assert_not_contains "$setup_call" " -A "
+assert_contains "$tmux_call" " -L 3000:localhost:3000"
+[[ "$(grep -n -F 'sh -ec' <<< "$setup_output" | cut -d: -f1)" -lt "$(grep -n -F 'tmux new-session' <<< "$setup_output" | cut -d: -f1)" ]] || { echo "Expected the setup call before the tmux call" >&2; exit 1; }
+
+setup_list_output="$("$TMP_DIR/dev" setup list 2>&1)"
+assert_not_contains "$setup_list_output" "sh -ec"

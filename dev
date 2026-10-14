@@ -32,6 +32,39 @@ compdef _dev dev
 EOF
 }
 
+# Runs config/<instance>/first-connect.sh once per container, with GH_TOKEN,
+# from the user's login shell so it sees what their shell config exports. No
+# -L forwards (another session may hold the ports) and no agent forwarding.
+run_first_connect() {
+  local script="$INSTANCE_CONFIG_DIR/first-connect.sh"
+  if [[ ! -f "$script" ]]; then
+    return
+  fi
+
+  local remote
+  # shellcheck disable=SC2016
+  remote='state="$HOME/.cache/dev-container"
+mkdir -p "$state"
+[ -e "$state/first-connect.done" ] && exit 0
+script="$(mktemp)"
+trap '\''rm -f "$script"'\'' EXIT
+cat > "$script"
+exec 9>"$state/first-connect.lock"
+if ! flock -n 9; then
+  echo "first-connect script is already running in another session; skipping" >&2
+  exit 0
+fi
+[ -e "$state/first-connect.done" ] && exit 0
+echo "Running first-connect script..." >&2
+"$SHELL" -lic '\''bash -eo pipefail "$1"'\'' first-connect "$script" </dev/null 9>&-
+touch "$state/first-connect.done"'
+
+  if ! ssh "${ssh_base_opts[@]}" localhost \
+    "GH_TOKEN=$(printf '%q' "$GH_TOKEN") sh -ec $(printf '%q' "$remote")" < "$script"; then
+    echo "Warning: first-connect setup ($script) did not complete; it will run again on the next connect" >&2
+  fi
+}
+
 case "${1:-}" in
   --init)
     if [[ $# -ne 1 ]]; then
@@ -89,7 +122,8 @@ else
   exit 1
 fi
 
-ssh_opts=(-A -l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p "$ssh_port")
+ssh_base_opts=(-l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p "$ssh_port")
+ssh_opts=(-A "${ssh_base_opts[@]}")
 if [ -n "${FORWARD_PORTS:-}" ]; then
   IFS=',' read -ra ports <<< "$FORWARD_PORTS"
   for port in "${ports[@]}"; do
@@ -108,6 +142,7 @@ case "$command" in
       echo "Warning: GH_TOKEN not set in $INSTANCE_CONFIG_DIR/.env, falling back to 'gh auth token' (which may have broader privileges than needed)" >&2
       GH_TOKEN="$(gh auth token)"
     fi
+    run_first_connect
     ssh "${ssh_opts[@]}" -t localhost \
       GH_TOKEN="$GH_TOKEN" \
       tmux new-session -A -s "$session_name" -c "$CODE_DIR/$command"

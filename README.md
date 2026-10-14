@@ -103,7 +103,7 @@ Two optional scripts can be created per instance under `config/<instance>/instal
 
 **`custom-install-root.sh`** — runs as root after the toolchains are installed, before the user is created. Use for extra `apt` packages or system-level config.
 
-**`custom-install-user.sh`** — runs as the container user after dotfiles are installed. Use for personal tools, shell plugins, or user-level config. Its writes under `$HOME` are captured in the image and appear in each newly created container. Build time has no GitHub credentials, so anything pulling from a private repository cannot run here; setup requiring credentials belongs in a script run by hand inside the container, where its results remain ephemeral unless their exact files are selected through `data/home`.
+**`custom-install-user.sh`** — runs as the container user after dotfiles are installed. Use for personal tools, shell plugins, or user-level config. Its writes under `$HOME` are captured in the image and appear in each newly created container. Build time has no GitHub credentials, so anything pulling from a private repository cannot run here; put setup requiring credentials in the first-connect script below.
 
 Example `config/<instance>/install/custom-install-user.sh`:
 
@@ -116,6 +116,12 @@ npx -y skills@latest add -g -y pauldowman/cross-agent-review
 ```
 
 Don't write `~/.zshrc.local` here: if `data/home/.zshrc.local` exists, startup replaces the image's copy with a link to it. Put shell config in your dotfiles or in `data/home/.zshrc.local`.
+
+### First-connect script
+
+`config/<instance>/first-connect.sh` (copy `first-connect.sh.example`) is for setup that needs GitHub credentials, such as installing plugins from private repositories. `dev <instance> <session>` runs it once per container, before attaching tmux, with `GH_TOKEN` set. It runs with `bash -eo pipefail`, started from your login shell (`$SHELL -lic`), so it sees whatever your shell config exports, such as `CLAUDE_CODE_OAUTH_TOKEN`. Its output appears on the first connect after a rebuild.
+
+The container's home records a successful run, so the script runs again only after the container is recreated; rebuild to rerun it after editing. If it fails, `dev` prints a warning and still connects, and the next connect retries. Make it safe to rerun, and exit non-zero when setup is incomplete so it is retried. A connect that finds the script already running in another session skips it. The script stays in host-side `config/`; `dev` copies it into the container for each run.
 
 ## GUI Access
 
