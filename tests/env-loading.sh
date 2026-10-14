@@ -274,7 +274,20 @@ ENV
 for script in build start dev; do
   expect_failure "instance must be at most 123 characters" "$TMP_DIR/$script" "$invalid_long_instance" project
 done
-expect_failure "instance must start with a lowercase letter or digit" "$TMP_DIR/start" Bad
+expect_failure "instance must be at least two characters" "$TMP_DIR/start" Bad
+write_config x <<ENV
+CODE_DIR=$CODE_ROOT
+ENV
+expect_failure "instance must be at least two characters" "$TMP_DIR/start" x
+
+host_env_output="$(GH_TOKEN=host-token DANGEROUSLY_MOUNT_DOCKER_SOCKET=true BUILD_TARGET=gui SSH_PORT=9 COMPOSE_FILE=other.yml "$TMP_DIR/start" scratch)"
+assert_contains "$host_env_output" "GH_TOKEN= "
+assert_contains "$host_env_output" "BUILD_TARGET=base"
+assert_contains "$host_env_output" "SSH_PORT= "
+assert_not_contains "$host_env_output" "docker-compose.docker-socket.yml"
+host_env_dev_output="$(GH_TOKEN=host-token "$TMP_DIR/dev" scratch project 2>&1)"
+assert_contains "$host_env_dev_output" "GH_TOKEN=fallback-token"
+assert_not_contains "$host_env_dev_output" "host-token"
 
 : > "$TMP_DIR/docker.log"
 dev_output="$("$TMP_DIR/dev" work project)"

@@ -53,7 +53,7 @@ The working directory inside the container is `$CODE_DIR/<session-name>`.
 
 ### Multiple Instances
 
-Every instance is self-contained: `config/<instance>/` holds its `.env`, an optional `docker-compose.override.yml`, and optional build-time scripts under `install/`. Nothing is inherited between instances, so settings such as `USERNAME` and `SSH_AUTHORIZED_KEYS` are repeated in each `.env`. Give each instance that runs at the same time a unique `SSH_PORT`.
+Every instance is self-contained: `config/<instance>/` holds its `.env`, an optional `docker-compose.override.yml`, and optional build-time scripts under `install/`. Nothing is inherited between instances or from your shell (an exported `GH_TOKEN`, for example, is ignored), so settings such as `USERNAME` and `SSH_AUTHORIZED_KEYS` are repeated in each `.env`. Instance names are at least two characters: lowercase letters, digits, underscores and hyphens, starting with a letter or digit. Give each instance that runs at the same time a unique `SSH_PORT`.
 
 ```
 config/

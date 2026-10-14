@@ -27,8 +27,8 @@ load_env_file() {
 select_instance() {
   INSTANCE="$1"
 
-  if [[ ! "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
-    echo "Error: instance must start with a lowercase letter or digit and contain only lowercase letters, digits, underscores, or hyphens" >&2
+  if [[ ! "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]+$ ]]; then
+    echo "Error: instance must be at least two characters, start with a lowercase letter or digit, and contain only lowercase letters, digits, underscores, or hyphens" >&2
     exit 1
   fi
   if (( ${#INSTANCE} > 123 )); then
@@ -42,6 +42,10 @@ select_instance() {
     exit 1
   fi
 
+  # Only the instance's .env decides these, never the caller's shell: an
+  # exported GH_TOKEN would otherwise reach an instance meant to use its own.
+  unset GH_TOKEN DANGEROUSLY_MOUNT_DOCKER_SOCKET CODE_DIR SSH_PORT FORWARD_PORTS BUILD_TARGET DOCKERFILE \
+    USERNAME SSH_AUTHORIZED_KEYS DOTFILES_REPO DOTFILES_INSTALL_CMD COMPOSE_FILE
   load_env_file "$INSTANCE_CONFIG_DIR/.env"
   INSTANCE="$1"
 

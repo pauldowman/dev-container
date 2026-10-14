@@ -28,7 +28,7 @@ A Docker-based development environment with SSH access, supporting multiple lang
 - `config/<instance>/first-connect.sh` — optional setup needing `GH_TOKEN`, run by `dev <instance> <session>` before attaching tmux, once per container: a marker in `~/.cache/dev-container` records success, so rebuild to rerun. The setup ssh call has no `-L`/`-A`, sends the script on stdin, and runs it under a non-blocking `flock` with `bash -eo pipefail` from `$SHELL -lic`, so it gets the user's login-shell environment without the framework knowing their shell config. Failure warns and still connects. Covered by `tests/dev-first-connect.sh`, whose ssh stub runs the remote command locally
 - `scripts/start-gui.sh` — GUI entrypoint: same as start.sh but also starts xrdp
 - `docker-compose.docker-socket.yml` — the optional Docker socket mount, added by `start` when `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true`
-- `scripts/env.sh` — shared by `build`, `start` and `dev`: `select_instance` validates the name and loads only `config/<instance>/.env`; `set_compose_args` builds the Compose arguments
+- `scripts/env.sh` — shared by `build`, `start` and `dev`: `select_instance` validates the name (two or more characters, as Compose requires for container names), clears the instance-controlled variables inherited from the caller's shell (so an exported `GH_TOKEN` or `DANGEROUSLY_MOUNT_DOCKER_SOCKET` cannot leak into an instance), and loads only `config/<instance>/.env`; `set_compose_args` builds the Compose arguments
 - `build` — shell script that stops the selected container and rebuilds its image via Docker Compose; run `./start <instance>` afterward
 
 ## Build & run
