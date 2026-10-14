@@ -40,14 +40,20 @@ def bind_device(options):
     return None
 
 
+class VolumeInspectError(Exception):
+    pass
+
+
 def docker_volume_options(name):
-    """The volume's driver options, or None when it cannot be inspected."""
+    """The volume's driver options, or None when no such volume exists."""
     result = subprocess.run(
         [os.environ.get("DOCKER", "docker"), "volume", "inspect", name],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
-        return None
+        if "no such volume" in result.stderr.lower():
+            return None
+        raise VolumeInspectError(f"cannot inspect volume {name}: {result.stderr.strip()}")
     volumes = json.loads(result.stdout)
     return (volumes[0].get("Options") or {}) if volumes else None
 
@@ -70,7 +76,11 @@ def compose_host_paths(config):
                 # declared options, so check both; a missing volume is created
                 # from the declared options unless it must already exist.
                 volume_name = declared.get("name", volume["source"])
-                existing = docker_volume_options(volume_name)
+                try:
+                    existing = docker_volume_options(volume_name)
+                except VolumeInspectError as error:
+                    yield name, None, str(error)
+                    continue
                 if existing is None and declared.get("external"):
                     yield name, None, f"cannot inspect external volume {volume_name}"
                     continue
@@ -88,10 +98,17 @@ def inspect_host_paths(containers):
         for mount in container.get("Mounts") or []:
             if mount.get("Type") == "bind":
                 yield name, mount["Source"], None
-            elif mount.get("Type") == "volume" and mount.get("Name"):
-                options = docker_volume_options(mount["Name"])
+            elif mount.get("Type") == "volume":
+                if not mount.get("Name"):
+                    yield name, None, f"cannot identify the volume mounted at {mount.get('Destination')}"
+                    continue
+                try:
+                    options = docker_volume_options(mount["Name"])
+                except VolumeInspectError as error:
+                    yield name, None, str(error)
+                    continue
                 if options is None:
-                    yield name, None, f"cannot inspect volume {mount['Name']}"
+                    yield name, None, f"volume {mount['Name']} no longer exists"
                     continue
                 device = bind_device(options)
                 if device:

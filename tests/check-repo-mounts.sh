@@ -21,7 +21,8 @@ case "\$*" in
   "volume inspect plain-volume") echo '[{"Name":"plain-volume","Options":null}]' ;;
   "volume inspect repo-bind-volume") echo '[{"Name":"repo-bind-volume","Options":{"type":"none","o":"ro, bind","device":"$REPO"}}]' ;;
   "volume inspect project_scratch") echo '[{"Name":"project_scratch","Options":{"type":"none","o":"bind","device":"$REPO"}}]' ;;
-  *) exit 1 ;;
+  "volume inspect broken-volume") echo "Error response from daemon: permission denied" >&2; exit 1 ;;
+  *) echo "Error response from daemon: get \${3}: no such volume" >&2; exit 1 ;;
 esac
 STUB
 chmod +x "$TMP_DIR/bin/docker"
@@ -69,6 +70,8 @@ expect_rejected "secret file in the repository" compose "{\"services\":{\"dev-co
 expect_rejected "config file in the repository" compose "{\"services\":{\"dev-container\":{}},\"configs\":{\"env\":{\"file\":\"$REPO/config/work/.env\"}}}"
 expect_rejected "external volume binding the repository" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"repo","target":"/x"}]}},"volumes":{"repo":{"name":"repo-volume","external":true}}}'
 expect_rejected "existing volume binding the repository despite declared options" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"scratch","target":"/x"}]}},"volumes":{"scratch":{"name":"project_scratch","driver_opts":{"type":"tmpfs","device":"tmpfs"}}}}'
+expect_rejected "volume whose inspection fails for another reason" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"broken","target":"/x"}]}},"volumes":{"broken":{"name":"broken-volume"}}}'
+expect_accepted "new volume that does not exist yet" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"fresh","target":"/x"}]}},"volumes":{"fresh":{"name":"fresh-volume"}}}'
 expect_rejected "external volume that cannot be inspected" compose '{"services":{"dev-container":{"volumes":[{"type":"volume","source":"gone","target":"/x"}]}},"volumes":{"gone":{"name":"gone-volume","external":true}}}'
 expect_rejected "volumes_from" compose '{"services":{"dev-container":{"volumes_from":["other"]}}}'
 
@@ -87,9 +90,10 @@ expect_rejected "running container mounting the repository" inspect "[{\"Name\":
 expect_rejected "running container with a volume binding the repository" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"repo-volume","Source":"/var/lib/docker/volumes/repo-volume/_data","Destination":"/x"}]}]'
 expect_rejected "running container with a plain bind volume (spaced options) of the repository" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"repo-bind-volume","Destination":"/x"}]}]'
 expect_rejected "running container with a volume that cannot be inspected" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"gone-volume","Destination":"/x"}]}]'
+expect_rejected "running container with an unnamed volume" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Destination":"/x"}]}]'
 expect_accepted "running container with a plain volume" inspect '[{"Name":"/work","Mounts":[{"Type":"volume","Name":"plain-volume","Destination":"/x"}]}]'
 expect_rejected "running container with volumes_from" inspect '[{"Name":"/work","HostConfig":{"VolumesFrom":["other"]},"Mounts":[]}]'
-expect_accepted "running container mounting only allowed paths" inspect "[{\"Name\":\"/work\",\"Mounts\":[{\"Type\":\"bind\",\"Source\":\"$ALLOWED\",\"Destination\":\"/var/lib/dev-container/data\"},{\"Type\":\"bind\",\"Source\":\"$TMP_DIR/code\",\"Destination\":\"$TMP_DIR/code\"},{\"Type\":\"volume\",\"Source\":\"/var/lib/docker/volumes/x/_data\",\"Destination\":\"/x\"}]}]"
+expect_accepted "running container mounting only allowed paths" inspect "[{\"Name\":\"/work\",\"Mounts\":[{\"Type\":\"bind\",\"Source\":\"$ALLOWED\",\"Destination\":\"/var/lib/dev-container/data\"},{\"Type\":\"bind\",\"Source\":\"$TMP_DIR/code\",\"Destination\":\"$TMP_DIR/code\"},{\"Type\":\"volume\",\"Name\":\"plain-volume\",\"Source\":\"/var/lib/docker/volumes/plain-volume/_data\",\"Destination\":\"/x\"}]}]"
 
 if "$CHECK" compose "$REPO" "$REPO/data/linked" <<< "$(compose_with_bind "$TMP_DIR/code")" 2>"$TMP_DIR/stderr"; then
   fail "Expected a symlinked data directory to be rejected"
