@@ -1,8 +1,2 @@
-.env
-.env.*
-!.env.example
 data/
-docker-compose.override.yml
-docker-compose.override.*.yml
-custom-install-user.sh
-custom-install-root.sh
+config/

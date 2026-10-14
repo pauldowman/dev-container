@@ -19,7 +19,8 @@ class DevAgentTests(unittest.TestCase):
         (self.root / "bin").mkdir()
         shutil.copy2(ROOT / "dev", self.root / "dev")
         shutil.copy2(ROOT / "scripts/env.sh", self.root / "scripts/env.sh")
-        (self.root / ".env").write_text(f"CODE_DIR={self.root}\nUSERNAME=tester\n")
+        (self.root / "config/test").mkdir(parents=True)
+        (self.root / "config/test/.env").write_text(f"CODE_DIR={self.root}\nUSERNAME=tester\n")
         self.env = os.environ.copy()
         self.env.update({"PATH": str(self.root / "bin") + ":" + self.env["PATH"], "TEST_AGENT_ROOT": str(self.root), "SSH_AUTH_SOCK": str(self.root / "existing.sock")})
         self.stub("docker", "printf '127.0.0.1:2222\\n'\n")
@@ -42,7 +43,7 @@ touch "$TEST_AGENT_ROOT/loaded"
 
     def run_dev(self, status, expected_status=0):
         self.env["TEST_AGENT_STATUS"] = str(status)
-        result = subprocess.run([str(self.root / "dev"), "list"], env=self.env, capture_output=True, text=True, timeout=5)
+        result = subprocess.run([str(self.root / "dev"), "test", "list"], env=self.env, capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, expected_status, result.stderr)
         events = self.root / "events"
         return events.read_text().splitlines() if events.exists() else []

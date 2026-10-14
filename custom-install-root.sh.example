@@ -1,7 +1,7 @@
 #!/bin/bash
-# Copy this file to custom-install-root.sh to run custom build-time setup as root.
+# Copy this file to config/<instance>/install/custom-install-root.sh to run custom build-time setup as root.
 # Runs during the image build as root, before the container user is created (optional).
-# custom-install-root.sh is gitignored so changes are local only.
+# config/ is gitignored so changes are local only.
 #
 # Use this for system-wide installs that need root: apt packages, debs, etc.
 #

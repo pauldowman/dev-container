@@ -1,7 +1,7 @@
 #!/bin/bash
-# Copy this file to custom-install-user.sh to run custom build-time setup as the container user.
+# Copy this file to config/<instance>/install/custom-install-user.sh to run custom build-time setup as the container user.
 # Runs during the image build as the container user, after dotfiles and tools are installed (optional).
-# custom-install-user.sh is gitignored so changes are local only.
+# config/ is gitignored so changes are local only.
 #
 # Use this for personal tools, shell plugins, Claude plugins, or configuration.
 # Runs with `bash -eo pipefail`: any failing command fails the build, and commands must not prompt (no TTY).

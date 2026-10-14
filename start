@@ -5,25 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/scripts/env.sh"
-load_env_file "$SCRIPT_DIR/.env"
 
-INSTANCE="${DEV_CONTAINER_INSTANCE:-dev-container}"
-SSH_PORT="${SSH_PORT:-}"
 SSH_PORT_ARG=""
 
 usage() {
-  echo "Usage: start [--instance <name>] [--ssh-port <port>]" >&2
-}
-
-validate_instance() {
-  if [[ ! "$INSTANCE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
-    echo "Error: instance must start with a lowercase letter or digit and contain only lowercase letters, digits, underscores, or hyphens" >&2
-    exit 1
-  fi
-  if (( ${#INSTANCE} > 123 )); then
-    echo "Error: instance must be at most 123 characters" >&2
-    exit 1
-  fi
+  echo "Usage: start <instance> [--ssh-port <port>]" >&2
 }
 
 validate_port() {
@@ -31,33 +17,6 @@ validate_port() {
     echo "Error: SSH port must be numeric" >&2
     exit 1
   fi
-}
-
-validate_docker_socket_option() {
-  case "${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}" in
-    true|false) ;;
-    *)
-      echo "Error: DANGEROUSLY_MOUNT_DOCKER_SOCKET must be true or false" >&2
-      exit 1
-      ;;
-  esac
-}
-
-# Setting COMPOSE_FILE disables Compose's automatic override file, so keep it
-# when building the default file list.
-add_docker_socket_compose_file() {
-  if [[ "${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}" != "true" ]]; then
-    return
-  fi
-
-  local compose_files="${COMPOSE_FILE:-}"
-  if [[ -z "$compose_files" ]]; then
-    compose_files="docker-compose.yml"
-    if [[ -f docker-compose.override.yml ]]; then
-      compose_files+=":docker-compose.override.yml"
-    fi
-  fi
-  export COMPOSE_FILE="$compose_files:docker-compose.docker-socket.yml"
 }
 
 # A running container is left alone, so it keeps the socket mount it was
@@ -70,7 +29,7 @@ check_running_docker_socket_mount() {
   fi
 
   if [[ "$mounted" != "${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}" ]]; then
-    echo "Error: $INSTANCE is running with docker.sock mounted=$mounted but DANGEROUSLY_MOUNT_DOCKER_SOCKET=${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}; recreate it with ./build --instance $INSTANCE, then ./start --instance $INSTANCE" >&2
+    echo "Error: $INSTANCE is running with docker.sock mounted=$mounted but DANGEROUSLY_MOUNT_DOCKER_SOCKET=${DANGEROUSLY_MOUNT_DOCKER_SOCKET:-false}; recreate it with ./build $INSTANCE, then ./start $INSTANCE" >&2
     exit 1
   fi
 }
@@ -93,7 +52,7 @@ validate_build_configuration() {
 
 validate_repo_location() {
   if [[ -z "${CODE_DIR:-}" ]]; then
-    echo "Error: CODE_DIR must be set in .env" >&2
+    echo "Error: CODE_DIR must be set in $INSTANCE_CONFIG_DIR/.env" >&2
     exit 1
   fi
   if [[ "$CODE_DIR" != /* ]]; then
@@ -122,16 +81,16 @@ validate_repo_location() {
   DEV_CONTAINER_REPO_DIR="$SCRIPT_DIR"
 }
 
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+  ""|-*) usage; exit 1 ;;
+esac
+
+select_instance "$1"
+shift
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --instance)
-      if [[ -z "${2:-}" ]]; then
-        usage
-        exit 1
-      fi
-      INSTANCE="$2"
-      shift 2
-      ;;
     --ssh-port)
       if [[ -z "${2:-}" ]]; then
         usage
@@ -140,10 +99,6 @@ while [[ $# -gt 0 ]]; do
       SSH_PORT_ARG="$2"
       shift 2
       ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
     *)
       usage
       exit 1
@@ -151,10 +106,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-validate_instance
-selected_instance="$INSTANCE"
-load_env_file "$SCRIPT_DIR/.env.$INSTANCE"
-INSTANCE="$selected_instance"
 validate_build_configuration
 validate_repo_location
 
@@ -165,16 +116,15 @@ else
 fi
 
 validate_port
-validate_docker_socket_option
+set_compose_args
 
 cd "${SCRIPT_DIR}"
-add_docker_socket_compose_file
 
-container_id="$(env INSTANCE="$INSTANCE" BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" SSH_PORT="$SSH_PORT" docker compose -p "$INSTANCE" ps -q dev-container 2>/dev/null || true)"
+container_id="$(env BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" SSH_PORT="$SSH_PORT" docker compose "${COMPOSE_ARGS[@]}" ps -q dev-container 2>/dev/null || true)"
 if [[ -n "$container_id" && "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null || true)" == "true" ]]; then
   check_running_docker_socket_mount "$container_id"
 else
   echo "Starting $INSTANCE..."
   export DOCKER_CLI_HINTS=false
-  env INSTANCE="$INSTANCE" BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" SSH_PORT="$SSH_PORT" docker compose -p "$INSTANCE" up -d
+  env BUILD_TARGET="$BUILD_TARGET" DEV_CONTAINER_REPO_DIR="$DEV_CONTAINER_REPO_DIR" SSH_PORT="$SSH_PORT" docker compose "${COMPOSE_ARGS[@]}" up -d
 fi

@@ -85,7 +85,7 @@ ARG DOTFILES_REPO=""
 ARG DOTFILES_INSTALL_CMD="./install.sh"
 
 # Custom root script (runs as root, before user creation; optional)
-RUN --mount=type=bind,source=.,target=/mnt/src \
+RUN --mount=type=bind,from=instance-install,target=/mnt/src \
     if [ -f /mnt/src/custom-install-root.sh ]; then bash -eo pipefail /mnt/src/custom-install-root.sh; fi
 
 RUN userdel -r ubuntu 2>/dev/null || true && \
@@ -176,7 +176,7 @@ RUN cargo install tuicr
 RUN cargo install kubie
 
 # Custom user script (runs as user, after dotfiles and tools; optional)
-RUN --mount=type=bind,source=.,target=/mnt/src \
+RUN --mount=type=bind,from=instance-install,target=/mnt/src \
     if [ -f /mnt/src/custom-install-user.sh ]; then bash -eo pipefail /mnt/src/custom-install-user.sh; fi
 
 # docker shim (macOS-host only): on a Mac the /Users -> /home symlink makes

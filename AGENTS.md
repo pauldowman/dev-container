@@ -7,9 +7,11 @@ A Docker-based development environment with SSH access, supporting multiple lang
 ## What it is
 
 - Ubuntu base image with Go, Rust, Node.js, and Foundry (Ethereum) toolchains
-- SSH-only access (no password auth) on port 2222 (localhost only)
+- SSH-only access (no password auth) on each instance's `SSH_PORT` (localhost only)
+- Instances are directories: `config/<instance>/` (gitignored) holds `.env`, an optional `docker-compose.override.yml`, and optional build-time scripts under `install/`. There is no default instance and no inheritance between instances; `build`, `start` and `dev` take the instance name as their first argument
 - Code directory is volume-mounted at the same path inside and outside the container; host path (`CODE_DIR`) is passed into the container as `$CODE_DIR` for Docker socket compatibility
-- Host Docker socket is mounted only when `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true`; `start` then appends `docker-compose.docker-socket.yml` to `COMPOSE_FILE` (building the default `docker-compose.yml[:docker-compose.override.yml]` list when unset, since setting `COMPOSE_FILE` disables Compose's automatic override). The socket is root-equivalent host access, so leave it off for isolated instances. `start` leaves a running container alone but exits with an error if its socket mount disagrees with the setting; start containers only through `./start`, since a hand-run `docker compose up` omits the socket file
+- Every Compose call gets its inputs from `set_compose_args` in `scripts/env.sh`: `--env-file config/<instance>/.env` (so Compose never auto-loads a root `.env`), `docker-compose.yml`, the instance override if present, and `docker-compose.docker-socket.yml` when enabled. `COMPOSE_FILE` is rejected
+- Host Docker socket is mounted only when `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true`. The socket is root-equivalent host access, so leave it off for isolated instances. `start` leaves a running container alone but exits with an error if its socket mount disagrees with the setting; start containers only through `./start`, since a hand-run `docker compose up` omits the socket file
 - Installs dotfiles from https://github.com/pauldowman/dotfiles
 - Includes neovim, Claude CLI, tmux, zsh, fzf, ripgrep, fd (Ubuntu's `fd-find`, symlinked to `fd` in `/usr/local/bin`), mise, and dev tools
 - Agent CLIs are installed user-scope in the image because they self-update in place during a container's lifetime; runtime updates disappear on recreation unless exact files are deliberately selected through `data/home`. Codex uses OpenAI's standalone installer, with `~/.local/bin/codex` targeting its user-writable package under `~/.codex/packages/standalone`; do not advertise `auth.json` as persistent without an authenticated rewrite test. Other npm globals remain system-scope under `/usr/local` so rebuilds refresh them.
@@ -17,30 +19,31 @@ A Docker-based development environment with SSH access, supporting multiple lang
 ## Key files
 
 - `Dockerfile` — multi-stage image build. The final/default `base` target is SSH-only; the opt-in `gui` target adds XFCE4 + xrdp. The xrdp/GUI login password is the username (`chpasswd`). The GUI stage wires `pam_gnome_keyring` into `/etc/pam.d/xrdp-sesman` so the GNOME login keyring is created/unlocked with that login password at login. Keyring files are ephemeral unless exact files are selected under `data/home`; applications may atomically replace them, so persistence is not guaranteed without an application-specific test. If stale selected files cause an unknown-password prompt, remove their counterparts from `data/home/.local/share/keyrings` and re-login. The GUI stage also installs Python GI/AT-SPI, GTK 3/GDK, xdotool and xprop for existing-desktop agent control; discover the live display/session bus rather than persisting their addresses. `scripts/desktop-accessibility.desktop` is installed under `/etc/xdg/autostart` and sets `org.a11y.Status.IsEnabled` on GUI login without changing `ScreenReaderEnabled`. Bus-environment equality and registry reachability do not prove selected-application controls; inspect the actual accessibility tree. The switch is backed by GSettings when available, while container recreation discards unselected home settings. The GUI stage installs Google Chrome (Google ships both amd64 and arm64 Linux debs) and makes it XFCE's preferred browser through a system-wide `chrome-nosandbox` helper, because Docker's default seccomp profile blocks the namespaces Chrome's sandbox needs and a sandboxed launch from `xdg-open` crashes.
-- `docker-compose.yml` — runs the container without a home volume; reads `USERNAME`, `SSH_AUTHORIZED_KEYS`, and `CODE_DIR` from env and tags each image by instance and build target. Sets `shm_size: 1gb` for every target because Docker's 64MB default `/dev/shm` breaks Chrome renderers and multiprocessing workloads; tmpfs only consumes memory that is actually written.
+- `docker-compose.yml` — runs the container without a home volume; reads `USERNAME`, `SSH_AUTHORIZED_KEYS`, and `CODE_DIR` from env and tags each image by instance and build target. `INSTANCE` is required (`${INSTANCE:?}`), and `config/<instance>/install` is the build's `instance-install` named context, the only instance files the build sees. Sets `shm_size: 1gb` for every target because Docker's 64MB default `/dev/shm` breaks Chrome renderers and multiprocessing workloads; tmpfs only consumes memory that is actually written.
 - `scripts/start.sh` — container entrypoint: creates the shared `data/home` source with runtime-user ownership, links its selected files into `$HOME`, writes runtime-managed SSH files, sets up Docker socket access, and starts sshd
 - `scripts/docker-shim` — installed as `/usr/local/bin/docker` (shadows the real `/usr/bin/docker`). **macOS-host only:** on a Mac, the `/Users -> /home` symlink means path-canonicalizing tools (notably `cargo-prove --docker`) pass an unshared `/home/...` bind source that Docker Desktop rejects. The shim rewrites bind-mount sources to the shared host path, derived from `/proc/self/mountinfo`. No-op on Linux hosts (no Docker Desktop shared mounts).
 - `scripts/ssh-agent-relink` — preserves `~/.ssh/agent.sock` only when its agent contains the key matching the startup-managed `~/.ssh/id_ed25519.pub`; dead, empty and wrong-key targets trigger a search of other forwarded sockets. An empty agent is reachable but cannot sign. Called silently from `scripts/ssh-rc` and a 60s startup watchdog. Regression tests use real temporary agents in `tests/ssh-agent-relink.py`; optional link/key-file arguments keep them isolated. The host `dev` launcher loads empty agents or replaces unreachable ones before connecting, covered by `tests/dev-agent.py`.
-- `custom-install-user.sh` — optional per-machine user setup, run as the user at **image build time** (`Dockerfile`) with `bash -eo pipefail`, so any failing command fails the build (both custom scripts were once silently swallowed by `|| true`). There is no TTY, so commands must be non-interactive (e.g. `npx -y skills@latest add -g -y …`). Its writes under `$HOME` land in the image and appear in newly created containers. Build time has no GitHub credentials—`dev` forwards `GH_TOKEN` only for SSH sessions—so anything pulling from a private repository cannot run here. Setup needing credentials belongs in a script run by hand inside the container, where results are ephemeral unless exact files are selected through `data/home`.
+- `config/<instance>/install/custom-install-user.sh` (and `custom-install-root.sh`) — optional per-instance setup, run as the user at **image build time** (`Dockerfile`) with `bash -eo pipefail`, so any failing command fails the build (both custom scripts were once silently swallowed by `|| true`). There is no TTY, so commands must be non-interactive (e.g. `npx -y skills@latest add -g -y …`). Its writes under `$HOME` land in the image and appear in newly created containers. Build time has no GitHub credentials—`dev` forwards `GH_TOKEN` only for SSH sessions—so anything pulling from a private repository cannot run here. Setup needing credentials belongs in a script run by hand inside the container, where results are ephemeral unless exact files are selected through `data/home`.
 - `scripts/start-gui.sh` — GUI entrypoint: same as start.sh but also starts xrdp
 - `docker-compose.docker-socket.yml` — the optional Docker socket mount, added by `start` when `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true`
-- `build` — shell script that stops the selected container and rebuilds its image via Docker Compose; run `./start` afterward
+- `scripts/env.sh` — shared by `build`, `start` and `dev`: `select_instance` validates the name and loads only `config/<instance>/.env`; `set_compose_args` builds the Compose arguments
+- `build` — shell script that stops the selected container and rebuilds its image via Docker Compose; run `./start <instance>` afterward
 
 ## Build & run
 
 ```sh
 # Rebuild and restart
-./build
-./start
+./build <instance>
+./start <instance>
 
-# Build and start the opt-in GUI target after setting BUILD_TARGET=gui in .env
-./build
-./start
+# Build and start the opt-in GUI target after setting BUILD_TARGET=gui in config/<instance>/.env
+./build <instance>
+./start <instance>
 ```
 
 `./build` and `./start` validate `BUILD_TARGET`; supported values are `base` (the default) and `gui`. A configured legacy `DOCKERFILE` value is rejected so it cannot silently select an obsolete build path.
 
-Required env vars (typically in `.env`, with per-instance overrides in `.env.<instance>`):
+Required env vars, in `config/<instance>/.env` (root `.env`, `.env.<instance>` and root overrides or custom scripts from the old layout are ignored):
 - `USERNAME` — the container user (should match host username)
 - `SSH_AUTHORIZED_KEYS` — newline-separated public keys; first key is also used as the user's public key
 - `CODE_DIR` — canonical absolute path to the code directory containing this repository (e.g. `/Users/paul/code`); symlink aliases are rejected because it is mounted at the same path inside the container and passed as `$CODE_DIR` for Docker-in-Docker volume paths
@@ -61,19 +64,19 @@ When upgrading from the old named-home-volume configuration, selected files must
 
 ## Connecting
 
-Use the `dev` script to connect. It opens (or reattaches to) a named tmux session in `~/code/<session-name>` and forwards the GitHub token:
+Use the `dev` script to connect. It opens (or reattaches to) a named tmux session in `$CODE_DIR/<session-name>` and forwards the GitHub token:
 
 ```sh
-./dev <session-name>   # e.g. ./dev my-project
-./dev list             # list active tmux sessions
+./dev <instance> <session-name>   # e.g. ./dev work my-project
+./dev <instance> list             # list active tmux sessions
 ```
 
-The script connects to `localhost:2222`. To connect from a remote machine, SSH to the host and run the script there:
+The script finds the instance's published SSH port. To connect from a remote machine, SSH to the host and run the script there:
 
 ```sh
-ssh -t dev /home/paul/code/dev-container/dev <session-name>
+ssh -t dev /home/paul/code/dev-container/dev <instance> <session-name>
 ```
 
 Port forwarding from the container is handled via `LocalForward` entries in the remote machine's `~/.ssh/config` for the host.
 
-Run `eval "$(./dev --init)"` to enable zsh tab completion for session names and `~/code` subdirectories.
+Run `eval "$(./dev --init)"` to enable zsh tab completion for instance names (from `config/`) and that instance's `CODE_DIR` subdirectories. Completion asks `dev <instance> --code-dir` in a subprocess so the instance `.env`, which holds `GH_TOKEN`, is never sourced into the interactive shell.

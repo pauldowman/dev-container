@@ -7,20 +7,21 @@ A Docker-based development environment with SSH access, supporting multiple lang
 
 ## Setup
 
-Copy `.env.example` to `.env` and configure it:
+Each instance is a directory under the gitignored `config/`; its name is the instance name. Create one by copying `.env.example` into it and configuring it:
 
 ```bash
-cp .env.example .env
+mkdir -p config/work
+cp .env.example config/work/.env
 ```
 
-Build the image, then start the container:
+Build the image, then start the container, passing the instance name:
 
 ```bash
-./build
-./start
+./build work
+./start work
 ```
 
-To rebuild the image later, run `./build` again; it stops the existing container before building, so run `./start` afterward. To start the container without rebuilding, run only `./start`.
+To rebuild the image later, run `./build work` again; it stops the existing container before building, so run `./start work` afterward. To start the container without rebuilding, run only `./start work`.
 
 Set up shell integration (adds the `dev` command and tab completion):
 
@@ -33,49 +34,38 @@ Add this to your `~/.zshrc` to load it automatically.
 ## Usage
 
 ```bash
-dev <session-name>   # attach to or create a tmux session inside the container
-dev list             # list running tmux sessions
+dev <instance> <session-name>   # attach to or create a tmux session inside the container
+dev <instance> list             # list running tmux sessions
 ```
 
 Nested paths are supported:
 
 ```bash
-dev projectname
-dev subdir/projectname
+dev work projectname
+dev work subdir/projectname
 ```
 
-The working directory inside the container is `~/code/<session-name>`.
+The working directory inside the container is `$CODE_DIR/<session-name>`.
 
 ### Multiple Instances
 
-The default instance is named `dev-container` and uses SSH port `2222`. To run another instance, give it a unique instance name and SSH port:
+Every instance is self-contained: `config/<instance>/` holds its `.env`, an optional `docker-compose.override.yml`, and optional build-time scripts under `install/`. Nothing is inherited between instances, so settings such as `USERNAME` and `SSH_AUTHORIZED_KEYS` are repeated in each `.env`. Give each instance that runs at the same time a unique `SSH_PORT`.
 
-```bash
-./start --instance work --ssh-port 2223
-dev --instance work projectname
-dev --instance work list
+```
+config/
+  work/
+    .env
+    docker-compose.override.yml
+    install/custom-install-user.sh
+  personal/
+    .env
 ```
 
-The instance name is used as the Docker Compose project name, container name, hostname, and part of the image tag. Image tags include both the instance and target, such as `dev-container:work-base` or `dev-container:work-gui`, so variants cannot overwrite one another. Instances have separate ephemeral home directories while sharing the same `CODE_DIR` mount and the same explicitly selected files under this repository's `data/home` directory.
+The instance name is used as the Docker Compose project name, container name, hostname, and part of the image tag. Image tags include both the instance and target, such as `dev-container:work-base` or `dev-container:work-gui`, so variants cannot overwrite one another. Instances have separate ephemeral home directories while sharing the same explicitly selected files under this repository's `data/home` directory.
 
-You can also set defaults with environment variables:
+`./start <instance> --ssh-port <port>` overrides the instance's `SSH_PORT` for one start.
 
-```bash
-DEV_CONTAINER_INSTANCE=work SSH_PORT=2223 ./start
-DEV_CONTAINER_INSTANCE=work dev projectname
-```
-
-For per-instance configuration, create `.env.<instance>`. The scripts load `.env` first for shared defaults, then load `.env.<instance>` for the selected instance if it exists. Explicit CLI flags, such as `--instance` and `--ssh-port`, take precedence.
-
-```bash
-# .env
-USERNAME=paul
-CODE_DIR=/home/paul/code
-
-# .env.work
-SSH_PORT=2223
-FORWARD_PORTS=3000,5173
-```
+Upgrading from the old layout: root `.env`, `.env.<instance>`, `docker-compose.override*.yml` and `custom-install-*.sh` files are no longer read, and are no longer gitignored. Move them into `config/<instance>/` (custom scripts under `install/`), merging any `.env.<instance>` and per-instance override into that instance's copy, then delete the root files.
 
 ## tmux Session State
 
@@ -85,7 +75,7 @@ The saved layouts remain available across process and container restarts, but th
 
 ## Configuration
 
-The `.env` and `.env.<instance>` files are gitignored. Available options:
+Each instance's settings live in `config/<instance>/.env`, which is gitignored with the rest of `config/`. Available options:
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
@@ -100,7 +90,6 @@ The `.env` and `.env.<instance>` files are gitignored. Available options:
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
 | `DANGEROUSLY_MOUNT_DOCKER_SOCKET` | No | `false` | `true` mounts the host Docker socket so `docker` works inside the container; this grants host-level access (see [Docker access](#docker-access)) |
 | `SSH_PORT` | No | `2222` | Host SSH port published by `./start`; use a unique port for each running instance |
-| `DEV_CONTAINER_INSTANCE` | No | `dev-container` | Default instance name for `./build`, `./start`, and `./dev`; can be overridden with `--instance` |
 
 ## Default Config
 
@@ -110,13 +99,13 @@ If `DOTFILES_REPO` is set, the dotfiles install runs *after* the defaults are co
 
 ## Customization
 
-Two optional scripts can be created locally (both are gitignored). Each runs with `bash -eo pipefail`, so any failing command fails the build; append `|| true` to a command that is allowed to fail. Commands must not prompt, because the build has no TTY.
+Two optional scripts can be created per instance under `config/<instance>/install/` (gitignored with the rest of `config/`). Only that `install/` directory is visible to the image build, so the instance `.env` is not. Each runs with `bash -eo pipefail`, so any failing command fails the build; append `|| true` to a command that is allowed to fail. Commands must not prompt, because the build has no TTY.
 
 **`custom-install-root.sh`** — runs as root after the toolchains are installed, before the user is created. Use for extra `apt` packages or system-level config.
 
 **`custom-install-user.sh`** — runs as the container user after dotfiles are installed. Use for personal tools, shell plugins, or user-level config. Its writes under `$HOME` are captured in the image and appear in each newly created container. Build time has no GitHub credentials, so anything pulling from a private repository cannot run here; setup requiring credentials belongs in a script run by hand inside the container, where its results remain ephemeral unless their exact files are selected through `data/home`.
 
-Example `custom-install-user.sh`:
+Example `config/<instance>/install/custom-install-user.sh`:
 
 ```bash
 # Install a mise plugin and tool version
@@ -130,7 +119,7 @@ Don't write `~/.zshrc.local` here: if `data/home/.zshrc.local` exists, startup r
 
 ## GUI Access
 
-Set the validated `gui` build target and append `3389` to any existing `FORWARD_PORTS` list, preferably in `.env.<instance>` when only one instance uses the GUI. Then build and start to get an XFCE4 desktop accessible via RDP:
+Set the validated `gui` build target and append `3389` to any existing `FORWARD_PORTS` list, in the instance's `config/<instance>/.env`. Then build and start to get an XFCE4 desktop accessible via RDP:
 
 ```dotenv
 BUILD_TARGET=gui
@@ -138,11 +127,11 @@ FORWARD_PORTS=3389
 ```
 
 ```bash
-./build
-./start
+./build work
+./start work
 ```
 
-Start `./dev <session-name>` for an existing code directory and leave that SSH session open; `FORWARD_PORTS=3389` forwards xrdp from the container because Compose does not publish the RDP port directly. Then connect an RDP client to `localhost:3389`; both the xrdp username and password are the configured container username. Only one SSH session can bind that local port at a time. If port 3389 is already in use or two GUI instances must run concurrently, give each instance a different local port in its `.env.<instance>`, such as `FORWARD_PORTS=3390:3389`, and connect RDP to `localhost:3390` instead. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless exact files are selected under `data/home`; because keyring applications may replace files atomically, do not assume selecting them is reliable without application-specific testing. If a stale selected keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
+Start `./dev work <session-name>` for an existing code directory and leave that SSH session open; `FORWARD_PORTS=3389` forwards xrdp from the container because Compose does not publish the RDP port directly. Then connect an RDP client to `localhost:3389`; both the xrdp username and password are the configured container username. Only one SSH session can bind that local port at a time. If port 3389 is already in use or two GUI instances must run concurrently, give each instance a different local port in its `config/<instance>/.env`, such as `FORWARD_PORTS=3390:3389`, and connect RDP to `localhost:3390` instead. The desktop is configured with dark mode and a single workspace by default. GNOME keyring files under `~/.local/share/keyrings` are ephemeral on container recreation unless exact files are selected under `data/home`; because keyring applications may replace files atomically, do not assume selecting them is reliable without application-specific testing. If a stale selected keyring causes an unknown-password prompt, remove its corresponding files from `data/home/.local/share/keyrings` and log in again.
 
 The GUI target includes `/etc/xdg/autostart/desktop-accessibility.desktop`, which enables `org.a11y.Status.IsEnabled` on the real GUI session bus at login for native accessibility/agent observation. It leaves `ScreenReaderEnabled` unchanged. AT-SPI saves the setting through GSettings/dconf when its schema is available, so it survives logout and login. Container recreation discards settings that were not selected under `data/home`; the autostart entry turns accessibility on again at each GUI login. Launch applications after login so they see the enabled switch. Verify actual application controls as well as the switch: a reachable registry or a registered window frame does not establish a usable browser/page tree. A browser can find the session bus without an exported `DBUS_SESSION_BUS_ADDRESS`; comparing environment variables does not verify accessibility. To check the switch, run `gdbus call --session --dest org.a11y.Bus --object-path /org/a11y/bus --method org.freedesktop.DBus.Properties.Get org.a11y.Status IsEnabled` from the GUI session.
 
@@ -158,7 +147,7 @@ The container home has no Docker volume. It survives an ordinary process or cont
 
 The only selective home-persistence source is the gitignored `data/home` directory in this repository. On startup, every regular file or source symlink below it is linked into the same home-relative path: `data/home/.config/tool/state.json` becomes `~/.config/tool/state.json`. Source directories only provide hierarchy, so empty directories have no effect and whole destination directories are never replaced. Every instance on the machine deliberately uses this one shared source, which means simultaneously running instances can contend over mutable selected files.
 
-Before upgrading an installation that still uses the old named home volume, copy each file you want to retain into its exact `data/home` path before running the new `./build`; the build removes the old container, though it does not delete the named volume. Also ensure this repository is inside the canonical `CODE_DIR` configured in `.env`, remove any obsolete `DOCKERFILE` setting, and use `BUILD_TARGET=base` or `BUILD_TARGET=gui`. For example, run the following from the repository root while the old default container is still running:
+Before upgrading an installation that still uses the old named home volume, copy each file you want to retain into its exact `data/home` path before running the new `./build`; the build removes the old container, though it does not delete the named volume. Also ensure this repository is inside the canonical `CODE_DIR` configured in the instance's `.env`, remove any obsolete `DOCKERFILE` setting, and use `BUILD_TARGET=base` or `BUILD_TARGET=gui`. For example, run the following from the repository root while the old default container is still running:
 
 ```bash
 container=dev-container
@@ -183,7 +172,7 @@ sudo chown -R "$(id -u):$(id -g)" data/home/.config/tool
 
 Verify the copied files and the rebuilt container before optionally removing the old volume with `docker volume rm "${instance}_home"`; that deletion is permanent. The obsolete `dev-container:latest` image can likewise be removed with `docker image rm dev-container:latest` after confirming no container still uses it.
 
-To opt in an existing file, move it to its exact path under `data/home`, then restart the container so startup creates the link. For example, run the following on the host from this repository; replace `dev-container` with a named instance when needed:
+To opt in an existing file, move it to its exact path under `data/home`, then restart the container so startup creates the link. For example, run the following on the host from this repository; replace `dev-container` with the instance name:
 
 ```bash
 docker exec dev-container sh -c 'mkdir -p "$DEV_CONTAINER_REPO_DIR/data/home/.config/tool" && mv "$HOME/.config/tool/state.json" "$DEV_CONTAINER_REPO_DIR/data/home/.config/tool/state.json"'
@@ -212,7 +201,7 @@ If a selected path prevents startup, inspect `docker logs <instance>` from the h
 
 ### Docker access
 
-The host Docker socket is not mounted by default, so `docker` commands inside the container fail with "Cannot connect to the Docker daemon". Set `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true` (in `.env`, or in `.env.<instance>` for one instance) to mount it; `./start` then adds `docker-compose.docker-socket.yml` to the Compose files. The change applies when the container is recreated, so run `./build` and `./start`; `./start` refuses to continue while a running container's socket mount disagrees with the setting.
+The host Docker socket is not mounted by default, so `docker` commands inside the container fail with "Cannot connect to the Docker daemon". Set `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true` in `config/<instance>/.env` to mount it; the scripts then add `docker-compose.docker-socket.yml` to the Compose files. The change applies when the container is recreated, so run `./build <instance>` and `./start <instance>`; `./start` refuses to continue while a running container's socket mount disagrees with the setting.
 
 The socket is root-equivalent access to the host Docker daemon: anything in the container can start a container that bind-mounts any host path (on Docker Desktop, any shared path such as all of `/Users`), runs `--privileged`, or `docker exec`s into other instances. Leave it off for an instance that should be isolated from the host, other instances, or files outside its `CODE_DIR`.
 
@@ -226,13 +215,13 @@ To fix this transparently, `scripts/docker-shim` is installed as `/usr/local/bin
 
 ### Custom Mounts
 
-To add extra mounts without modifying `docker-compose.yml`, copy `docker-compose.override.yml.example` to `docker-compose.override.yml` and edit it. The override file is gitignored so changes stay local.
+To add extra mounts without modifying `docker-compose.yml`, copy `docker-compose.override.yml.example` to `config/<instance>/docker-compose.override.yml` and edit it. It applies only to that instance. Relative paths in it resolve against the repository root, not `config/<instance>/`.
 
 ```bash
-cp docker-compose.override.yml.example docker-compose.override.yml
+cp docker-compose.override.yml.example config/work/docker-compose.override.yml
 ```
 
-`docker-compose.override.yml` applies to every instance. For mounts in only one instance, set `COMPOSE_FILE` in `.env.<instance>`, e.g. `COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml:docker-compose.override.work.yml` (files matching `docker-compose.override.*.yml` are gitignored); Compose skips the automatic override file unless it is listed.
+The scripts pass Compose its inputs explicitly (the instance `.env`, `docker-compose.yml`, the instance override, and the Docker socket file when enabled), so a root `.env` or `docker-compose.override.yml` is ignored and `COMPOSE_FILE` is rejected.
 
 ## Pre-installed Tools
 
@@ -255,7 +244,7 @@ Place `.crt` files in `./data/certs/`. They are installed on container startup v
 
 The `./dev` script forwards a GitHub token into the container as `$GH_TOKEN` so `gh` and other tools work without a separate login inside the container.
 
-By default it calls `gh auth token` on the host, which typically returns a broadly-scoped token. Prefer setting `GH_TOKEN` in `.env` to a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) limited to just the repos and permissions you need. If `GH_TOKEN` is unset, `./dev` prints a warning and falls back to `gh auth token`.
+By default it calls `gh auth token` on the host, which typically returns a broadly-scoped token. Prefer setting `GH_TOKEN` in `config/<instance>/.env` to a [fine-grained PAT](https://github.com/settings/personal-access-tokens/new) limited to just the repos and permissions you need. If `GH_TOKEN` is unset, `./dev` prints a warning and falls back to `gh auth token`.
 
 Suggested permissions for a token that can push, work with PRs and issues, manage Projects v2, and debug CI:
 

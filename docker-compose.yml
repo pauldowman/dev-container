@@ -1,16 +1,18 @@
 services:
   dev-container:
-    container_name: ${INSTANCE:-dev-container}
-    hostname: ${INSTANCE:-dev-container}
+    container_name: ${INSTANCE:?Pass the instance name to ./build, ./start or ./dev}
+    hostname: ${INSTANCE:?Pass the instance name to ./build, ./start or ./dev}
     build:
       context: .
       dockerfile: Dockerfile
+      additional_contexts:
+        instance-install: ./config/${INSTANCE:?Pass the instance name to ./build, ./start or ./dev}/install
       target: ${BUILD_TARGET:-base}
       args:
         USERNAME: ${USERNAME:-$USER}
         DOTFILES_REPO: ${DOTFILES_REPO:-}
         DOTFILES_INSTALL_CMD: ${DOTFILES_INSTALL_CMD:-./install.sh}
-    image: dev-container:${INSTANCE:-dev-container}-${BUILD_TARGET:-base}
+    image: dev-container:${INSTANCE:?Pass the instance name to ./build, ./start or ./dev}-${BUILD_TARGET:-base}
     # Docker's 64MB default /dev/shm breaks Chrome renderers, Python
     # multiprocessing, and similar shared-memory users. tmpfs only uses memory
     # that is written, so a larger cap costs nothing when idle.
@@ -23,7 +25,7 @@ services:
       - CODE_DIR
       - DEV_CONTAINER_REPO_DIR
     volumes:
-      - ${CODE_DIR:?Set CODE_DIR in .env}:${CODE_DIR}
+      - ${CODE_DIR:?Set CODE_DIR in config/<instance>/.env}:${CODE_DIR}
       - ./data/certs:/usr/local/share/ca-certificates/extra:ro
       - /etc/localtime:/etc/localtime:ro
     restart: always
