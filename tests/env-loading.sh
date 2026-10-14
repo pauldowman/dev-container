@@ -291,9 +291,14 @@ assert_not_contains "$host_env_dev_output" "host-token"
 assert_not_contains "$host_env_dev_output" "host-github-token"
 
 cleared="$(sed -n '/^  unset GH_TOKEN/,/[^\\]$/p' "$ROOT/scripts/env.sh")"
-for variable in $(grep -oh '\${[A-Z_]*' "$ROOT/docker-compose.yml" "$ROOT/docker-compose.docker-socket.yml" | tr -d '${' | sort -u); do
+# Interpolated ${VAR}s and bare `- VAR` environment entries both read the shell.
+compose_variables="$(
+  grep -oh '\${[A-Z_]*' "$ROOT/docker-compose.yml" "$ROOT/docker-compose.docker-socket.yml" | tr -d '${'
+  grep -Eh '^ +- [A-Z_]+$' "$ROOT/docker-compose.yml" "$ROOT/docker-compose.docker-socket.yml" | tr -d ' -'
+)"
+for variable in $(sort -u <<< "$compose_variables"); do
   case "$variable" in
-    INSTANCE|USER) ;;
+    INSTANCE|USER|TZ) ;;
     *) [[ " $cleared " =~ [[:space:]]$variable[[:space:]] ]] || { echo "select_instance must clear $variable, which docker-compose.yml reads" >&2; exit 1; } ;;
   esac
 done
