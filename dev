@@ -140,7 +140,8 @@ case "$command" in
     session_name="${command//\//-}"
     if [ -z "${GH_TOKEN:-}" ]; then
       echo "Warning: GH_TOKEN not set in $INSTANCE_CONFIG_DIR/.env, falling back to 'gh auth token' (which may have broader privileges than needed)" >&2
-      GH_TOKEN="$(gh auth token)"
+      # GITHUB_TOKEN would override the host's stored gh login.
+      GH_TOKEN="$(env -u GITHUB_TOKEN gh auth token)"
     fi
     run_first_connect
     ssh "${ssh_opts[@]}" -t localhost \

@@ -62,7 +62,7 @@ STUB
 
   cat > "$TMP_DIR/bin/gh" <<'STUB'
 #!/usr/bin/env bash
-echo fallback-token
+echo "${GITHUB_TOKEN:-fallback-token}"
 STUB
 
   chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh" "$TMP_DIR/bin/ssh-add" "$TMP_DIR/bin/gh"
@@ -285,9 +285,18 @@ assert_contains "$host_env_output" "GH_TOKEN= "
 assert_contains "$host_env_output" "BUILD_TARGET=base"
 assert_contains "$host_env_output" "SSH_PORT= "
 assert_not_contains "$host_env_output" "docker-compose.docker-socket.yml"
-host_env_dev_output="$(GH_TOKEN=host-token "$TMP_DIR/dev" scratch project 2>&1)"
+host_env_dev_output="$(GH_TOKEN=host-token GITHUB_TOKEN=host-github-token "$TMP_DIR/dev" scratch project 2>&1)"
 assert_contains "$host_env_dev_output" "GH_TOKEN=fallback-token"
 assert_not_contains "$host_env_dev_output" "host-token"
+assert_not_contains "$host_env_dev_output" "host-github-token"
+
+cleared="$(sed -n '/^  unset GH_TOKEN/,/[^\\]$/p' "$ROOT/scripts/env.sh")"
+for variable in $(grep -oh '\${[A-Z_]*' "$ROOT/docker-compose.yml" "$ROOT/docker-compose.docker-socket.yml" | tr -d '${' | sort -u); do
+  case "$variable" in
+    INSTANCE|USER) ;;
+    *) [[ " $cleared " =~ [[:space:]]$variable[[:space:]] ]] || { echo "select_instance must clear $variable, which docker-compose.yml reads" >&2; exit 1; } ;;
+  esac
+done
 
 : > "$TMP_DIR/docker.log"
 dev_output="$("$TMP_DIR/dev" work project)"

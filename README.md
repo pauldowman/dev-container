@@ -53,7 +53,7 @@ The working directory inside the container is `$CODE_DIR/<session-name>`.
 
 ### Multiple Instances
 
-Every instance is self-contained: `config/<instance>/` holds its `.env`, an optional `docker-compose.override.yml`, and optional build-time scripts under `install/`. Nothing is inherited between instances or from your shell (an exported `GH_TOKEN`, for example, is ignored), so settings such as `USERNAME` and `SSH_AUTHORIZED_KEYS` are repeated in each `.env`. Instance names are at least two characters: lowercase letters, digits, underscores and hyphens, starting with a letter or digit. Give each instance that runs at the same time a unique `SSH_PORT`.
+Every instance is self-contained: `config/<instance>/` holds its `.env`, an optional `docker-compose.override.yml`, and optional build-time scripts under `install/`. Nothing is inherited between instances, so settings such as `USERNAME` and `SSH_AUTHORIZED_KEYS` are repeated in each `.env`. The settings this repository uses are not taken from your shell either (an exported `GH_TOKEN` or `GITHUB_TOKEN`, for example, is ignored), though a variable referenced only in your own override file still is. Instance names are at least two characters: lowercase letters, digits, underscores and hyphens, starting with a letter or digit. Give each instance that runs at the same time a unique `SSH_PORT`.
 
 ```
 config/
@@ -174,7 +174,7 @@ Startup validates the whole list before linking anything and stops with an error
 - is absolute, has an empty, `.` or `..` component, or has leading or trailing whitespace;
 - duplicates or is nested inside another entry;
 - does not exist under `data/<instance>/home`, or is reached through a symlinked directory there (a listed entry may itself be a symlink);
-- is `.ssh/authorized_keys`, `.ssh/id_ed25519.pub` or `.ssh/agent.sock`, something below them, or a directory containing them such as `.ssh`, because startup manages those files;
+- is `.ssh/authorized_keys`, `.ssh/id_ed25519.pub`, `.ssh/agent.sock` or `.cache/dev-container` (where `dev` records the first-connect run), something below them, or a directory containing them such as `.ssh` or `.cache`, because the container manages those paths;
 - would replace a real directory in the image's home. List the narrowest path instead, e.g. `.claude/projects` rather than `.claude`.
 
 If a listed path prevents startup, inspect `docker logs <instance>` from the host, fix the named line in `data/<instance>/persist` or the named path under `data/<instance>/home`, then restart the container; SSH cannot become available until the whole list passes validation.
