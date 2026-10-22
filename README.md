@@ -226,7 +226,7 @@ mkdir -p "data/$instance/home/.config/tool"
 docker run --rm \
   --mount "type=volume,src=${old}_home,dst=/old-home,readonly" \
   --mount "type=bind,src=$PWD/data/$instance/home,dst=/new-home" \
-  ubuntu:24.04 sh -c 'mkdir -p /new-home/.config/tool && cp -a /old-home/.config/tool/state.json /new-home/.config/tool/state.json'
+  ubuntu:26.10 sh -c 'mkdir -p /new-home/.config/tool && cp -a /old-home/.config/tool/state.json /new-home/.config/tool/state.json'
 sudo chown -R "$(id -u):$(id -g)" "data/$instance/home/.config/tool"
 echo .config/tool/state.json >> "data/$instance/persist"
 ```

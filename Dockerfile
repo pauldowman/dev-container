@@ -3,14 +3,14 @@ FROM golang:latest AS golang
 FROM ghcr.io/foundry-rs/foundry:latest AS foundry
 FROM node:latest AS node
 
-# Pinned rather than :latest because the apt packages below are release-specific
-# and a new release can rename or drop them (26.04 has no gcc-mips64-linux-gnuabi64).
-FROM ubuntu:24.04 AS development
+# Pinned rather than :rolling because the apt packages below are release-specific
+# and a new release can rename or drop them.
+FROM ubuntu:26.10 AS development
 
 RUN apt-get update && apt-get install -y \
     git curl sudo zsh fzf ripgrep fd-find tmux \
-    iproute2 dnsutils \
-    openssh-client openssh-server jq vim gh gpg python3.12-venv \
+    iproute2 bind9-dnsutils \
+    openssh-client openssh-server jq vim gh gpg python3-venv \
     ca-certificates locales unzip \
     make m4 build-essential clang libclang-dev llvm-dev cmake direnv bat btop libatomic1 procps wget mold shellcheck \
     pkg-config libssl-dev libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler libprotobuf-dev \
     libsasl2-dev \
     libudev-dev libdbus-1-dev \
-    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu gcc-mips64-linux-gnuabi64 \
+    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu \
     zip \
     && locale-gen en_US.UTF-8 \
     && mkdir -p /etc/apt/keyrings \
@@ -30,8 +30,8 @@ RUN apt-get update && apt-get install -y \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
     && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /etc/apt/keyrings/cloud.google.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" > /etc/apt/sources.list.d/google-cloud-sdk.list \
-    && curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" > /etc/apt/sources.list.d/kubernetes.list \
+    && curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.37/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.37/deb/ /" > /etc/apt/sources.list.d/kubernetes.list \
     && apt-get update && apt-get install -y glow docker-ce-cli docker-compose-plugin docker-buildx-plugin google-cloud-cli google-cloud-cli-gke-gcloud-auth-plugin kubectl \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd \
     && apt-get clean

@@ -30,7 +30,7 @@ start_container() {
     --volume "$LINK_HOME:/usr/local/bin/link-home:ro" \
     --volume "$FIXTURE_ROOT/code:$FIXTURE_ROOT/code" \
     --volume "$FIXTURE_ROOT/data/$instance:$DATA_MOUNT" \
-    ubuntu:24.04 sleep infinity >/dev/null
+    ubuntu:26.10 sleep infinity >/dev/null
 }
 
 link_home() {
