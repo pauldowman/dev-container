@@ -3,6 +3,8 @@ FROM golang:latest AS golang
 FROM ghcr.io/foundry-rs/foundry:latest AS foundry
 FROM node:latest AS node
 
+# Pinned rather than :latest because the apt packages below are release-specific
+# and a new release can rename or drop them (26.04 has no gcc-mips64-linux-gnuabi64).
 FROM ubuntu:24.04 AS development
 
 RUN apt-get update && apt-get install -y \
