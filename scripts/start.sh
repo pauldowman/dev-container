@@ -9,9 +9,8 @@ sudo chown "$(id -u):$(id -g)" "$persistent_home"
 
 mkdir -p ~/.ssh
 echo "$SSH_AUTHORIZED_KEYS" >~/.ssh/authorized_keys
-echo "$SSH_AUTHORIZED_KEYS" | head -n1 >~/.ssh/id_ed25519.pub
 chmod 700 ~/.ssh
-chmod 600 ~/.ssh/authorized_keys ~/.ssh/id_ed25519.pub
+chmod 600 ~/.ssh/authorized_keys
 
 # Grant the user access to the Docker socket if mounted
 if [ -S /var/run/docker.sock ]; then
@@ -32,12 +31,5 @@ if [ -d "$data_dir/certs" ]; then
   sudo find "$data_dir/certs" -maxdepth 1 -type f -name '*.crt' -exec cp -- {} "$cert_dir/" \;
 fi
 sudo update-ca-certificates --fresh >/dev/null
-
-# Keep ~/.ssh/agent.sock pointing at an agent with the signing key even when
-# no shell or connection triggers a repair (see scripts/ssh-agent-relink)
-while :; do
-  /usr/local/bin/ssh-agent-relink || true
-  sleep 60
-done &
 
 exec sudo /usr/sbin/sshd -D

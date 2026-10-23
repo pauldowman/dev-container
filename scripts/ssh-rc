@@ -1,5 +1,0 @@
-# shellcheck shell=sh
-# sshd runs this on every SSH connection. Keep output empty: stdout corrupts
-# scp/sftp sessions.
-/usr/local/bin/ssh-agent-relink
-tmux set-environment -g SSH_AUTH_SOCK "$HOME/.ssh/agent.sock" 2>/dev/null || true

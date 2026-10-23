@@ -83,7 +83,7 @@ Each instance's settings live in `config/<instance>/.env`, which is gitignored w
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SSH_AUTHORIZED_KEYS` | Yes | — | One or more SSH public keys (newline-separated); the first is also written to `~/.ssh/id_ed25519.pub` for git commit signing |
+| `SSH_AUTHORIZED_KEYS` | Yes | — | One or more SSH public keys (newline-separated) authorized to log in |
 | `USERNAME` | No | `$USER` | Username inside the container |
 | `DOTFILES_REPO` | No | — | Git repo URL to clone and install as dotfiles |
 | `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
@@ -174,7 +174,7 @@ Startup validates the whole list before linking anything and stops with an error
 - is absolute, has an empty, `.` or `..` component, or has leading or trailing whitespace;
 - duplicates or is nested inside another entry;
 - does not exist under `data/<instance>/home`, or is reached through a symlinked directory there (a listed entry may itself be a symlink);
-- is `.ssh/authorized_keys`, `.ssh/id_ed25519.pub`, `.ssh/agent.sock` or `.cache/dev-container` (where `dev` records the first-connect run), something below them, or a directory containing them such as `.ssh` or `.cache`, because the container manages those paths;
+- is `.ssh/authorized_keys` or `.cache/dev-container` (where `dev` records the first-connect run), something below them, or a directory containing them such as `.ssh` or `.cache`, because the container manages those paths;
 - would replace a real directory in the image's home. List the narrowest path instead, e.g. `.claude/projects` rather than `.claude`.
 
 If a listed path prevents startup, inspect `docker logs <instance>` from the host, fix the named line in `data/<instance>/persist` or the named path under `data/<instance>/home`, then restart the container; SSH cannot become available until the whole list passes validation.
@@ -302,19 +302,23 @@ Suggested permissions for a token that can push, work with PRs and issues, manag
 
 ## Git Commit Signing
 
-SSH commit signing works via the forwarded SSH agent. Shells use the stable path `~/.ssh/agent.sock`. On each SSH connection and every 60 seconds, `ssh-agent-relink` checks whether its target contains the key matching `~/.ssh/id_ed25519.pub`, which startup writes from the first `SSH_AUTHORIZED_KEYS` entry. It preserves a matching agent and searches other forwarded sockets when the current agent is unreachable, empty, or holds different keys. If no agent has the expected key, it leaves the link unchanged and reports failure to its caller without printing into the SSH session. Keep at least one SSH connection open that forwards the expected key.
+`./dev` does not forward the host's SSH agent, and sshd refuses agent forwarding, so code in a container cannot use your host keys. Each instance instead has its own SSH key for commit signing, kept in its data directory and persisted like any other home file. Add its public key to GitHub as a **signing key** (not an authentication key), so it can sign commits but cannot push. Push over HTTPS with `GH_TOKEN` instead of `git@github.com` remotes.
 
-The host `./dev` launcher checks an existing agent before connecting. It loads keys into an empty agent, or starts an agent when the current one is unreachable, and refuses to connect if loading fails or leaves the agent empty. Changes to the container helper take effect after rebuilding and recreating the container; changing the host launcher takes effect on the next invocation.
+Create the key for an instance from the host, then rebuild or restart it so startup links it into `~/.ssh`:
 
-Configure git in your dotfiles:
+```bash
+mkdir -p data/<instance>/home/.ssh
+ssh-keygen -t ed25519 -N "" -C "<instance> dev-container signing key" -f data/<instance>/home/.ssh/id_ed25519
+printf '.ssh/id_ed25519\n.ssh/id_ed25519.pub\n' >> data/<instance>/persist
+```
+
+The key has no passphrase because there is no agent to hold it unlocked, so anything running in that container can sign as you; revoke it on GitHub if the container is compromised. `ssh-keygen -Y sign` finds the private key next to the public key, so configure git in your dotfiles with the public key path:
 
 ```bash
 git config --global gpg.format ssh
 git config --global user.signingkey ~/.ssh/id_ed25519.pub
 git config --global commit.gpgsign true
 ```
-
-Run the agent regression tests with `python3 tests/ssh-agent-relink.py` and `python3 tests/dev-agent.py`. The relink tests create temporary keys and agents, including an actual signing probe; they leave the current session's agent untouched. For an isolated relink check, the helper accepts `ssh-agent-relink [stable-link [public-key-file]]`.
 
 ## Desktop agent control
 

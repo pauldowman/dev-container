@@ -55,17 +55,12 @@ STUB
 echo "ssh GH_TOKEN=${GH_TOKEN:-} args=$*"
 STUB
 
-  cat > "$TMP_DIR/bin/ssh-add" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-
   cat > "$TMP_DIR/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "${GITHUB_TOKEN:-fallback-token}"
 STUB
 
-  chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh" "$TMP_DIR/bin/ssh-add" "$TMP_DIR/bin/gh"
+  chmod +x "$TMP_DIR/bin/docker" "$TMP_DIR/bin/ssh" "$TMP_DIR/bin/gh"
 }
 
 assert_contains() {
@@ -120,7 +115,6 @@ write_stubs
 
 export TMP_DIR
 export PATH="$TMP_DIR/bin:$PATH"
-export SSH_AUTH_SOCK=/tmp/fake-ssh-agent.sock
 
 # A root .env from the old layout must be ignored.
 cat > "$TMP_DIR/.env" <<'ENV'
@@ -338,6 +332,7 @@ assert_contains "$setup_call" "localhost GH_TOKEN=fallback-token sh -ec"
 assert_not_contains "$setup_call" " -L "
 assert_not_contains "$setup_call" " -A "
 assert_contains "$tmux_call" " -L 3000:localhost:3000"
+assert_not_contains "${tmux_call%% localhost *}" "-A "
 [[ "$(grep -n -F 'sh -ec' <<< "$setup_output" | cut -d: -f1)" -lt "$(grep -n -F 'tmux new-session' <<< "$setup_output" | cut -d: -f1)" ]] || { echo "Expected the setup call before the tmux call" >&2; exit 1; }
 
 setup_list_output="$("$TMP_DIR/dev" setup list 2>&1)"

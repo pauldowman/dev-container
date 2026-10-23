@@ -146,7 +146,7 @@ expect_failure "missing source entry" link
 grep -Fq "$LIST:3:" "$TMP_DIR/failure-output" || fail "Errors must name the list file and line"
 [[ ! -e "$DESTINATION/file" ]] || fail "A missing entry left a partial overlay"
 
-for reserved_path in .ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock .ssh .cache/dev-container .cache; do
+for reserved_path in .ssh/authorized_keys .ssh .cache/dev-container .cache; do
   fixture_name="reserved-$(printf '%s' "$reserved_path" | tr -c 'a-z' '_')"
   new_fixture "$fixture_name"
   mkdir -p "$SOURCE/.ssh" "$SOURCE/.cache"
@@ -158,10 +158,21 @@ for reserved_path in .ssh/authorized_keys .ssh/id_ed25519.pub .ssh/agent.sock .s
 done
 
 new_fixture reserved-descendant
-mkdir -p "$SOURCE/.ssh/agent.sock"
-printf 'child\n' > "$SOURCE/.ssh/agent.sock/child"
-printf '.ssh/agent.sock/child\n' > "$LIST"
+mkdir -p "$SOURCE/.cache/dev-container"
+printf 'child\n' > "$SOURCE/.cache/dev-container/child"
+printf '.cache/dev-container/child\n' > "$LIST"
 expect_failure "runtime-managed path descendant" link
+
+new_fixture signing-key
+mkdir -p "$SOURCE/.ssh" "$DESTINATION/.ssh"
+printf 'private\n' > "$SOURCE/.ssh/id_ed25519"
+printf 'public\n' > "$SOURCE/.ssh/id_ed25519.pub"
+printf 'authorized\n' > "$DESTINATION/.ssh/authorized_keys"
+printf '.ssh/id_ed25519\n.ssh/id_ed25519.pub\n' > "$LIST"
+link
+assert_link_target "$DESTINATION/.ssh/id_ed25519" "$SOURCE/.ssh/id_ed25519"
+assert_link_target "$DESTINATION/.ssh/id_ed25519.pub" "$SOURCE/.ssh/id_ed25519.pub"
+[[ -f "$DESTINATION/.ssh/authorized_keys" && ! -L "$DESTINATION/.ssh/authorized_keys" ]] || fail "Linking a signing key must leave authorized_keys alone"
 
 new_fixture parent-type-conflict
 mkdir -p "$SOURCE/parent"

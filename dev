@@ -34,7 +34,7 @@ EOF
 
 # Runs config/<instance>/first-connect.sh once per container, with GH_TOKEN,
 # from the user's login shell so it sees what their shell config exports. No
-# -L forwards (another session may hold the ports) and no agent forwarding.
+# -L forwards (another session may hold the ports).
 run_first_connect() {
   local script="$INSTANCE_CONFIG_DIR/first-connect.sh"
   if [[ ! -f "$script" ]]; then
@@ -98,19 +98,6 @@ if [[ "$command" == "--code-dir" ]]; then
   exit 0
 fi
 
-agent_status=0
-ssh-add -l >/dev/null 2>&1 || agent_status=$?
-if [ "$agent_status" -ne 0 ]; then
-  if [ "$agent_status" -ne 1 ]; then
-    eval "$(ssh-agent -s)" >/dev/null
-  fi
-  ssh-add
-  if ! ssh-add -l >/dev/null 2>&1; then
-    echo "Error: SSH agent has no usable identities after loading keys" >&2
-    exit 1
-  fi
-fi
-
 set_compose_args
 port_output="$(docker compose "${COMPOSE_ARGS[@]}" port dev-container 22 2>/dev/null || true)"
 if [[ -n "$port_output" ]]; then
@@ -123,7 +110,7 @@ else
 fi
 
 ssh_base_opts=(-l "${USERNAME:-$USER}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o "SetEnv TERM=xterm-256color COLORTERM=truecolor" -p "$ssh_port")
-ssh_opts=(-A "${ssh_base_opts[@]}")
+ssh_opts=("${ssh_base_opts[@]}")
 if [ -n "${FORWARD_PORTS:-}" ]; then
   IFS=',' read -ra ports <<< "$FORWARD_PORTS"
   for port in "${ports[@]}"; do

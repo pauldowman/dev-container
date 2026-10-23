@@ -42,7 +42,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash 
 RUN curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | INSTALL_DIR=/usr/local/bin sh
 
 RUN ssh-keygen -A && \
-    echo "PasswordAuthentication no\nAllowAgentForwarding yes\nAllowTcpForwarding yes" \
+    echo "PasswordAuthentication no\nAllowAgentForwarding no\nAllowTcpForwarding yes" \
     > /etc/ssh/sshd_config.d/container.conf
 
 ENV LANG=en_US.UTF-8 \
@@ -78,8 +78,7 @@ COPY --from=foundry /usr/local/bin/chisel /usr/local/bin/
 # mise (version manager)
 RUN curl https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh && \
     echo 'eval "$(mise activate zsh)"' >> /etc/zsh/zshrc && \
-    echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc && \
-    echo 'export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"' >> /etc/zsh/zshrc
+    echo 'eval "$(mise activate bash)"' >> /etc/bash.bashrc
 RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /etc/zsh/zshenv
 
 ARG USERNAME
@@ -96,13 +95,6 @@ RUN userdel -r ubuntu 2>/dev/null || true && \
     ln -s /home /Users && \
     mkdir -p /home/$USERNAME/.ssh && \
     chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
-
-# Stable SSH agent socket: ssh-agent-relink keeps ~/.ssh/agent.sock (the path
-# all shells use via /etc/zsh/zshrc) pointing at an agent with the signing key,
-# repairing dead, empty or wrong-key targets.
-# Called from ~/.ssh/rc on each connection and from a watchdog loop in start.sh.
-COPY scripts/ssh-agent-relink /usr/local/bin/ssh-agent-relink
-COPY --chown=$USERNAME:$USERNAME scripts/ssh-rc /home/$USERNAME/.ssh/rc
 
 # Fix ownership of rust/cargo dirs for user and set default toolchain
 RUN chown -R $USERNAME:$USERNAME /usr/local/rustup /usr/local/cargo
@@ -255,6 +247,7 @@ CMD ["/usr/local/bin/start-gui.sh"]
 
 FROM development AS base-target-test
 RUN ! command -v xrdp >/dev/null
+RUN sudo mkdir -p /run/sshd && sudo /usr/sbin/sshd -T | grep -qx 'allowagentforwarding no'
 
 FROM gui AS gui-target-test
 RUN command -v xrdp >/dev/null

@@ -28,10 +28,6 @@ cat > "$TMP_DIR/bin/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "0.0.0.0:2222"
 STUB
-cat > "$TMP_DIR/bin/ssh-add" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
 cat > "$TMP_DIR/bin/ssh" <<'STUB'
 #!/usr/bin/env bash
 while [[ $# -gt 0 && "$1" != "localhost" ]]; do
@@ -46,7 +42,7 @@ HOME="$REMOTE_HOME" SHELL=/bin/bash exec bash -c "$*"
 STUB
 chmod +x "$TMP_DIR/bin/"*
 
-export PATH="$TMP_DIR/bin:$PATH" REMOTE_HOME="$TMP_DIR/remote-home" SSH_AUTH_SOCK=/tmp/fake-ssh-agent.sock
+export PATH="$TMP_DIR/bin:$PATH" REMOTE_HOME="$TMP_DIR/remote-home"
 script="$TMP_DIR/repo/config/work/first-connect.sh"
 marker="$TMP_DIR/remote-home/.cache/dev-container/first-connect.done"
 runs="$TMP_DIR/runs"
