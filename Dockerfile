@@ -9,7 +9,7 @@ FROM ubuntu:26.10 AS development
 
 RUN apt-get update && apt-get install -y \
     git curl sudo zsh fzf ripgrep fd-find tmux \
-    iproute2 bind9-dnsutils \
+    iproute2 bind9-dnsutils lsof \
     openssh-client openssh-server jq vim gh gpg python3-venv \
     ca-certificates locales unzip \
     make m4 build-essential clang libclang-dev llvm-dev cmake direnv bat btop libatomic1 procps wget mold shellcheck \
