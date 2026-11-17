@@ -2,8 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TMP_DIR="$(mktemp -d)"
-CODE_ROOT="$(mktemp -d)"
+# The scripts resolve their own paths with pwd -P, and macOS's temp dir is
+# reached through the /var -> /private/var symlink.
+TMP_DIR="$(cd "$(mktemp -d)" && pwd -P)"
+CODE_ROOT="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$TMP_DIR" "$CODE_ROOT" "$CODE_ROOT-alias"' EXIT
 unset BUILD_TARGET DOCKERFILE COMPOSE_FILE DANGEROUSLY_MOUNT_DOCKER_SOCKET INSTANCE GH_TOKEN SSH_PORT CODE_DIR USERNAME TZ
 
