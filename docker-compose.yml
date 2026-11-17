@@ -26,5 +26,4 @@ services:
     volumes:
       - ${CODE_DIR:?Set CODE_DIR in config/<instance>/.env}:${CODE_DIR}
       - ./data/${INSTANCE:?Pass the instance name to ./build, ./start or ./dev}:/var/lib/dev-container/data
-      - /etc/localtime:/etc/localtime:ro
     restart: always

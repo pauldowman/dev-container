@@ -22,6 +22,21 @@ load_env_file() {
   fi
 }
 
+# Passes the host's zone name rather than bind-mounting /etc/localtime: on
+# macOS it links into a versioned directory that timezone updates replace,
+# after which Docker Desktop cannot start a container that mounts it.
+default_tz_from_host() {
+  local localtime_path="$1"
+  local target
+
+  if [[ -n "${TZ:-}" ]] || ! target="$(readlink "$localtime_path")"; then
+    return
+  fi
+  if [[ "$target" == */zoneinfo/* ]]; then
+    export TZ="${target#*/zoneinfo/}"
+  fi
+}
+
 # Sets INSTANCE and INSTANCE_CONFIG_DIR and loads config/<instance>/.env;
 # expects SCRIPT_DIR to be the repository root.
 select_instance() {
@@ -48,6 +63,7 @@ select_instance() {
     USERNAME SSH_AUTHORIZED_KEYS DOTFILES_REPO DOTFILES_INSTALL_CMD COMPOSE_FILE
   load_env_file "$INSTANCE_CONFIG_DIR/.env"
   INSTANCE="$1"
+  default_tz_from_host /etc/localtime
 
   if [[ -n "${COMPOSE_FILE+x}" ]]; then
     echo "Error: COMPOSE_FILE is not supported; put extra Compose settings in $INSTANCE_CONFIG_DIR/docker-compose.override.yml" >&2

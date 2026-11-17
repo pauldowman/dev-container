@@ -89,7 +89,7 @@ Each instance's settings live in `config/<instance>/.env`, which is gitignored w
 | `DOTFILES_INSTALL_CMD` | No | `./install.sh` | Command to run inside the cloned dotfiles directory |
 | `CODE_DIR` | Yes | — | Existing canonical absolute host path of your code directory (e.g. `/Users/paul/code`); symlink aliases are rejected because it is mounted unchanged inside the container |
 | `BUILD_TARGET` | No | `base` | Validated image target: `base` or `gui`; use `./build` and `./start` rather than invoking Compose directly |
-| `TZ` | No | host TZ | Timezone inside the container (e.g. `America/New_York`) |
+| `TZ` | No | shell `TZ`, else the zone `/etc/localtime` links to | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`); use `local:container` to forward to a different local port, e.g. `3390:3389` |
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
 | `DANGEROUSLY_MOUNT_DOCKER_SOCKET` | No | `false` | `true` mounts the host Docker socket so `docker` works inside the container; this grants host-level access (see [Docker access](#docker-access)) |

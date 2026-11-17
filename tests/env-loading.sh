@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_DIR="$(mktemp -d)"
 CODE_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR" "$CODE_ROOT" "$CODE_ROOT-alias"' EXIT
-unset BUILD_TARGET DOCKERFILE COMPOSE_FILE DANGEROUSLY_MOUNT_DOCKER_SOCKET INSTANCE GH_TOKEN SSH_PORT CODE_DIR USERNAME
+unset BUILD_TARGET DOCKERFILE COMPOSE_FILE DANGEROUSLY_MOUNT_DOCKER_SOCKET INSTANCE GH_TOKEN SSH_PORT CODE_DIR USERNAME TZ
 
 copy_runtime() {
   mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/bin"
@@ -47,7 +47,7 @@ if [[ "${1:-}" == "inspect" ]]; then
   [[ -n "${STUB_RUNNING_MOUNTS+x}" ]] && echo "true" || echo "false"
   exit 0
 fi
-echo "docker INSTANCE=${INSTANCE:-} SSH_PORT=${SSH_PORT:-} CODE_DIR=${CODE_DIR:-} DEV_CONTAINER_REPO_DIR=${DEV_CONTAINER_REPO_DIR:-} BUILD_TARGET=${BUILD_TARGET:-} GH_TOKEN=${GH_TOKEN:-} args=$*"
+echo "docker INSTANCE=${INSTANCE:-} SSH_PORT=${SSH_PORT:-} CODE_DIR=${CODE_DIR:-} DEV_CONTAINER_REPO_DIR=${DEV_CONTAINER_REPO_DIR:-} BUILD_TARGET=${BUILD_TARGET:-} GH_TOKEN=${GH_TOKEN:-} TZ=${TZ:-} args=$*"
 STUB
 
   cat > "$TMP_DIR/bin/ssh" <<'STUB'
@@ -273,6 +273,27 @@ write_config x <<ENV
 CODE_DIR=$CODE_ROOT
 ENV
 expect_failure "instance must be at least two characters" "$TMP_DIR/start" x
+
+tz_from_link() {
+  local target="$1"
+  local link="$TMP_DIR/localtime"
+  rm -f "$link"
+  ln -s "$target" "$link"
+  (unset TZ; source "$ROOT/scripts/env.sh"; default_tz_from_host "$link"; echo "${TZ-<unset>}")
+}
+[[ "$(tz_from_link /var/db/timezone/zoneinfo/America/Edmonton)" == "America/Edmonton" ]] || { echo "Expected the zone name from a macOS localtime link" >&2; exit 1; }
+[[ "$(tz_from_link ../usr/share/zoneinfo/Europe/Berlin)" == "Europe/Berlin" ]] || { echo "Expected the zone name from a relative Linux localtime link" >&2; exit 1; }
+[[ "$(tz_from_link /etc/somewhere/else)" == "<unset>" ]] || { echo "Expected no TZ from a link outside zoneinfo" >&2; exit 1; }
+rm -f "$TMP_DIR/localtime" && touch "$TMP_DIR/localtime"
+[[ "$(unset TZ; source "$ROOT/scripts/env.sh"; default_tz_from_host "$TMP_DIR/localtime"; echo "${TZ-<unset>}")" == "<unset>" ]] || { echo "Expected no TZ from a regular localtime file" >&2; exit 1; }
+[[ "$(TZ=Asia/Tokyo; source "$ROOT/scripts/env.sh"; default_tz_from_host "$TMP_DIR/localtime"; echo "$TZ")" == "Asia/Tokyo" ]] || { echo "Expected an existing TZ to be kept" >&2; exit 1; }
+
+write_config tz <<ENV
+CODE_DIR=$CODE_ROOT
+TZ=Europe/Paris
+ENV
+assert_contains "$(TZ=Asia/Tokyo "$TMP_DIR/start" tz)" "TZ=Europe/Paris "
+assert_contains "$(TZ=Asia/Tokyo "$TMP_DIR/start" scratch)" "TZ=Asia/Tokyo "
 
 host_env_output="$(GH_TOKEN=host-token DANGEROUSLY_MOUNT_DOCKER_SOCKET=true BUILD_TARGET=gui SSH_PORT=9 COMPOSE_FILE=other.yml "$TMP_DIR/start" scratch)"
 assert_contains "$host_env_output" "GH_TOKEN= "
