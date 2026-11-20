@@ -92,7 +92,7 @@ Each instance's settings live in `config/<instance>/.env`, which is gitignored w
 | `TZ` | No | shell `TZ`, else the zone `/etc/localtime` links to | Timezone inside the container (e.g. `America/New_York`) |
 | `FORWARD_PORTS` | No | — | Comma-separated ports to forward from container to local machine (used by `./dev`); use `local:container` to forward to a different local port, e.g. `3390:3389` |
 | `GH_TOKEN` | No | `gh auth token` | GitHub token forwarded into the container session (see [GitHub token](#github-token)) |
-| `DANGEROUSLY_MOUNT_DOCKER_SOCKET` | No | `false` | `true` mounts the host Docker socket so `docker` works inside the container; this grants host-level access (see [Docker access](#docker-access)) |
+| `DANGEROUSLY_MOUNT_DOCKER_SOCKET` | No | `false` | `true` mounts the host Docker socket so `docker` works inside the container without approval; this grants host-level access. Without it, `docker` goes through the bridge (see [Docker access](#docker-access)) |
 | `SSH_PORT` | No | `2222` | Host SSH port published by `./start`; use a unique port for each running instance |
 
 ## Default Config
@@ -235,7 +235,31 @@ Verify the copied files and the rebuilt container before optionally removing the
 
 ### Docker access
 
-The host Docker socket is not mounted by default, so `docker` commands inside the container fail with "Cannot connect to the Docker daemon". Set `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true` in `config/<instance>/.env` to mount it; the scripts then add `docker-compose.docker-socket.yml` to the Compose files. The change applies when the container is recreated, so run `./build <instance>` and `./start <instance>`; `./start` refuses to continue while a running container's socket mount disagrees with the setting.
+The host Docker socket is not mounted by default. Instead, `docker` inside the container goes through a bridge: each call is queued as a job, and a person approves and runs it on the host. In the container the command waits, printing:
+
+```
+docker-bridge: waiting for approval of job 20261120-143200-4711; on the host, run ./docker-bridge work in the dev-container repository
+```
+
+On the host, from this repository:
+
+```sh
+./docker-bridge <instance>            # review and run each pending job in turn
+./docker-bridge <instance> <job-id>   # just that one
+```
+
+The runner shows each job's working directory, environment and `docker` arguments, and runs it only after you answer `y`. Output goes to your terminal as it happens and reaches the container when the job ends; the container then exits with docker's exit code. Declining, or a job the runner refuses, exits with 125. There is no stdin or TTY, so interactive commands (`run -it`, `login`) don't work, and following commands (`logs -f`, a foreground `compose up`) show nothing in the container until they end. Ctrl-C in the container withdraws a job the runner has not yet shown; once approved, docker runs to completion on the host unless you press Ctrl-C in the runner, which stops it and reports 130.
+
+How it works:
+- `/usr/local/bin/docker` checks on every call whether `/var/run/docker.sock` is mounted. If not, it runs `docker-bridge`; completion queries (`docker __complete`, run by zsh on each Tab) go to the real CLI instead, so Tab never waits for a job.
+- Jobs live in `data/<instance>/docker-bridge/`, which only that instance can see. Container paths under `CODE_DIR` are translated to host paths (on a Mac, `/home/<user>/code/...` becomes `/Users/<user>/code/...`). The container refuses calls whose working directory is outside `CODE_DIR`, or whose arguments refer to `/tmp` or `/home` paths outside it, since the host could not see them.
+- Only `DOCKER_*`, `BUILDX_*`, `BUILDKIT_*` and `COMPOSE_*` variables (and, for `bake`, the variables its file declares) are passed to the host. Variables that would choose another daemon, configuration, proxy, certificate or SSH agent are not passed: the container drops them, the runner refuses jobs that set them, and docker uses the host's own `DOCKER_HOST`, `DOCKER_CONTEXT` and `DOCKER_CONFIG`. Global options other than `-D`, `-l`, `-v` and `-h` are refused.
+- The runner treats everything in the jobs directory as hostile. It reads each job once, refuses control characters and symlinks, checks that the working directory is really inside `CODE_DIR`, and runs docker with no shell, with stdin from `/dev/null`, and with only the host's basic environment, so secrets in your shell or the instance `.env` never reach it. Only one runner per instance can run at a time.
+- The bridge needs `CODE_DIR`, which `scripts/start.sh` passes to SSH sessions through `/etc/environment`. Tools that use the Docker API directly rather than the `docker` command (testcontainers, Docker SDKs, IDE plugins) do not work through the bridge.
+
+**Approving a job is equivalent to briefly mounting the socket.** You see the command line, but not the files docker reads, and the container wrote those: `compose.yaml`, Dockerfiles, bake files, a `.env` in the working directory (which Compose reads, for example to choose `COMPOSE_FILE`), and symlinks in the working directory that point at host paths. Arguments such as `--ssh`, `--secret src=…` or `--env-file` can also name host paths. One approved `docker compose up -d` can start a long-lived container that mounts the host socket or any shared host path, including this repository, and the repository-mount check in `./start` does not apply to it. Review jobs with that in mind.
+
+To give an instance direct access instead, set `DANGEROUSLY_MOUNT_DOCKER_SOCKET=true` in `config/<instance>/.env`; the scripts then add `docker-compose.docker-socket.yml` to the Compose files, and the bridge steps aside. The change applies when the container is recreated, so run `./build <instance>` and `./start <instance>`; `./start` refuses to continue while a running container's socket mount disagrees with the setting. Turning it off again the same way restores the bridge.
 
 The socket is root-equivalent access to the host Docker daemon: anything in the container can start a container that bind-mounts any host path (on Docker Desktop, any shared path such as all of `/Users`), runs `--privileged`, or `docker exec`s into other instances. Leave it off for an instance that should be isolated from the host, other instances, or files outside its `CODE_DIR`.
 

@@ -20,6 +20,12 @@ if [ -S /var/run/docker.sock ]; then
   sudo usermod -aG "$DOCKER_GROUP" "$(whoami)"
 fi
 
+# SSH sessions get the container's environment only through pam_env, and
+# docker-bridge needs CODE_DIR. The line is replaced, not appended, so restarts
+# do not add duplicates.
+sudo sed -i '/^CODE_DIR=/d' /etc/environment
+echo "CODE_DIR=\"$CODE_DIR\"" | sudo tee -a /etc/environment >/dev/null
+
 sudo mkdir -p /run/sshd
 
 # Copied rather than bind-mounted: the container can replace data/certs with a

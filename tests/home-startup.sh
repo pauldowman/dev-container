@@ -20,6 +20,10 @@ link_line="$(grep -nF "/usr/local/bin/link-home \"${literal_dollar}persistent_ho
 authorized_keys_line="$(grep -nF "echo \"${literal_dollar}SSH_AUTHORIZED_KEYS\" >~/.ssh/authorized_keys" "$ROOT/scripts/start.sh" | cut -d: -f1)"
 [[ -n "$link_line" && -n "$authorized_keys_line" && "$link_line" -lt "$authorized_keys_line" ]] || fail "Home links must be installed before runtime SSH files are written"
 
+grep -Fxq "sudo sed -i '/^CODE_DIR=/d' /etc/environment" "$ROOT/scripts/start.sh" || fail "Startup must replace, not append, the CODE_DIR line in /etc/environment"
+grep -Fxq "echo \"CODE_DIR=\\\"${literal_dollar}CODE_DIR\\\"\" | sudo tee -a /etc/environment >/dev/null" "$ROOT/scripts/start.sh" || fail "Startup must pass CODE_DIR to SSH sessions through /etc/environment"
+grep -Fq 'COPY scripts/docker-bridge /usr/local/bin/docker-bridge' "$ROOT/Dockerfile" || fail "Dockerfile must install docker-bridge"
+
 copy_line="$(grep -nF "sudo find \"${literal_dollar}data_dir/certs\" -maxdepth 1 -type f -name '*.crt' -exec cp -- {} \"${literal_dollar}cert_dir/\" \\;" "$ROOT/scripts/start.sh" | cut -d: -f1)"
 update_line="$(grep -nF "sudo update-ca-certificates --fresh" "$ROOT/scripts/start.sh" | cut -d: -f1)"
 clear_line="$(grep -nF "sudo rm -rf \"${literal_dollar}cert_dir\"" "$ROOT/scripts/start.sh" | cut -d: -f1)"

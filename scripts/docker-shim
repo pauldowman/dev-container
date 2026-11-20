@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# docker shim for docker-outside-of-docker -- only needed when the host is macOS.
+# docker shim. Without a host Docker socket it hands the call to docker-bridge.
+# With one, it fixes bind-mount sources -- only needed when the host is macOS.
 #
 # On a macOS host, Docker Desktop resolves bind-mount SOURCES against the macOS HOST
 # filesystem and only shares certain host roots (e.g. /Users). This container symlinks
@@ -16,6 +17,16 @@
 # empty and this shim is a transparent pass-through -- it changes nothing. Container-
 # target paths, named volumes, and non-mount args are never touched. No hardcoded
 # usernames or paths. Handles `-v`/`--volume`; not `--mount source=` (unused by cargo-prove).
+
+# Without the host socket, docker runs on the host through docker-bridge after
+# a person approves it there. Completion queries stay local: zsh runs
+# `docker __complete` on every Tab, which must fail fast rather than queue a job.
+if [ ! -S /var/run/docker.sock ]; then
+  case ${1:-} in
+    __complete | __completeNoDesc) exec /usr/bin/docker "$@" ;;
+    *) exec /usr/local/bin/docker-bridge "$@" ;;
+  esac
+fi
 
 real_docker=/usr/bin/docker
 

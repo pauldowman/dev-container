@@ -173,12 +173,14 @@ RUN cargo install kubie
 RUN --mount=type=bind,from=instance-install,target=/mnt/src \
     if [ -f /mnt/src/custom-install-user.sh ]; then bash -eo pipefail /mnt/src/custom-install-user.sh; fi
 
-# docker shim (macOS-host only): on a Mac the /Users -> /home symlink makes
-# path-canonicalizing tools like `cargo-prove --docker` pass an unshared /home/...
-# bind source that Docker Desktop rejects; the shim rewrites it to the shared host
-# path. No-op on Linux hosts. /usr/local/bin precedes /usr/bin on PATH, so this
-# shadows the real docker (which it execs at /usr/bin/docker).
+# docker shim: /usr/local/bin precedes /usr/bin on PATH, so this shadows the
+# real docker. Without a host socket it hands the call to docker-bridge, which
+# queues it for approval on the host. With one, on a Mac, the /Users -> /home
+# symlink makes path-canonicalizing tools like `cargo-prove --docker` pass an
+# unshared /home/... bind source that Docker Desktop rejects; the shim rewrites
+# it to the shared host path (a no-op on Linux hosts) and execs /usr/bin/docker.
 COPY scripts/docker-shim /usr/local/bin/docker
+COPY scripts/docker-bridge /usr/local/bin/docker-bridge
 
 COPY scripts/link-home /usr/local/bin/link-home
 COPY scripts/start.sh /usr/local/bin/start.sh
@@ -248,6 +250,18 @@ CMD ["/usr/local/bin/start-gui.sh"]
 FROM development AS base-target-test
 RUN ! command -v xrdp >/dev/null
 RUN sudo mkdir -p /run/sshd && sudo /usr/sbin/sshd -T | grep -qix 'allowagentforwarding no'
+# scripts/start.sh passes CODE_DIR to SSH sessions through /etc/environment.
+RUN test -f /etc/environment && sudo /usr/sbin/sshd -T | grep -qix 'usepam yes' \
+    && grep -Eq '^session[[:space:]]+required[[:space:]]+pam_env\.so' /etc/pam.d/sshd
+# Without a socket, docker goes to the bridge, which here rejects / at once.
+RUN cd / && ! CODE_DIR=/tmp docker version 2>/tmp/bridge.err && grep -q '^docker-bridge: working directory' /tmp/bridge.err
+# zsh's _docker runs `docker __complete` on every Tab, which must not queue a job.
+RUN grep -q __complete /usr/share/zsh/vendor-completions/_docker
+RUN timeout 10 docker __complete r >/tmp/complete.out 2>/tmp/complete.err \
+    && grep -q '^run' /tmp/complete.out && ! grep -q docker-bridge /tmp/complete.err
+RUN sudo python3 -c 'import socket; socket.socket(socket.AF_UNIX).bind("/var/run/docker.sock")' \
+    && { timeout 10 docker version || true; } >/tmp/version.out 2>&1 \
+    && grep -q '^Client' /tmp/version.out && ! grep -q docker-bridge /tmp/version.out
 
 FROM gui AS gui-target-test
 RUN command -v xrdp >/dev/null
