@@ -32,8 +32,27 @@ DOCKER_ENV = re.compile(r"(DOCKER|BUILDX|BUILDKIT|COMPOSE)_.*")
 # Kept in step with forwardable() in scripts/docker-bridge: these would pick
 # another daemon, configuration, loader, proxy, certificate or SSH agent, or
 # replace the host's own basic environment.
-FORBIDDEN_ENV = re.compile(r"DOCKER_(HOST|CONTEXT|CONFIG|CERT_PATH|TLS.*|BRIDGE_.*)|PATH|HOME|USER|LOGNAME|"
-                           r"TMPDIR|LANG|LC_.*|PWD|SSH_.*|SSL_.*|.*_(PROXY|proxy)|GO[A-Z0-9]*|LD_.*|DYLD_.*")
+FORBIDDEN_ENV = re.compile(r"DOCKER_(HOST|CONTEXT|CONFIG|CERT_PATH|TLS.*|BRIDGE_.*|CONTENT_TRUST.*)|"
+                           r"BUILDX_(CONFIG|GIT_.*|BAKE_ENTITLEMENTS_.*)|GIT_.*|"
+                           r"OTEL_.*|XDG_.*|PATH|HOME|USER|LOGNAME|TMPDIR|LANG|LC_.*|PWD|SSH_.*|SSL_.*|"
+                           r".*_(PROXY|proxy)|GO[A-Z0-9]*|LD_.*|DYLD_.*")
+# Commands that act on the daemon and the job's own files. Anything else, such
+# as context, login, trust, buildx create/use, or CLI plugins that act on the
+# host with the user's credentials (Docker Desktop's pass, extension, offload),
+# would reach beyond the job.
+ALLOWED_COMMANDS = {
+    "bake", "build", "buildx", "builder", "commit", "compose", "container", "cp", "create", "diff", "events",
+    "exec", "export", "history", "image", "images", "import", "info", "inspect", "kill", "load", "logs",
+    "network", "pause", "port", "ps", "pull", "push", "rename", "restart", "rm", "rmi", "run", "save",
+    "search", "start", "stats", "stop", "system", "tag", "top", "unpause", "update", "version", "volume",
+    "wait",
+}
+# `docker builder` is the same plugin as `docker buildx`.
+BUILDX_COMMANDS = {"buildx", "builder"}
+ALLOWED_BUILDX_COMMANDS = {"bake", "build", "du", "history", "imagetools", "inspect", "ls", "prune", "version"}
+BUILDX_FLAGS = {"-D", "--debug", "-h", "--help"}
+# buildx's git provenance runs the host's git on the container's .git/config.
+JOB_DEFAULTS = {"BUILDX_GIT_INFO": "0"}
 # Only these may come before the subcommand; anything else (-H, --context,
 # --config, combined short flags like -DH) could pick another daemon or load
 # files the container wrote.
@@ -46,6 +65,10 @@ STOP_TIMEOUT_SECONDS = 10
 
 
 class Refused(Exception):
+    pass
+
+
+class Withdrawn(Exception):
     pass
 
 
@@ -92,7 +115,7 @@ def open_jobs_dir(instance):
     try:
         fcntl.flock(jobs_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        fail(f"another docker-bridge is already handling jobs for {instance}")
+        fail(f"another docker-bridge is already handling jobs for {instance} (or the container holds a lock on {path})")
     return jobs_fd
 
 
@@ -124,8 +147,17 @@ def pending_jobs(jobs_fd):
 
 
 def read_job(job_id, jobs_fd):
+    # Narrows, though it can't close, the window in which a device node could be
+    # opened; the fstat below is what guarantees a regular file is read.
+    try:
+        if not stat.S_ISREG(os.stat(f"{job_id}.job", dir_fd=jobs_fd, follow_symlinks=False).st_mode):
+            raise Refused("the job is not a regular file")
+    except FileNotFoundError:
+        raise Withdrawn()
     try:
         fd = os.open(f"{job_id}.job", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=jobs_fd)
+    except FileNotFoundError:
+        raise Withdrawn()
     except OSError as error:
         raise Refused(f"cannot open the job file safely ({error.strerror})")
     with os.fdopen(fd, "rb") as file:
@@ -158,6 +190,11 @@ def parse_job(data):
         env[name] = value
 
     command = argv[skip_global_options(argv):]
+    if command[:1] and command[0] in BUILDX_COMMANDS:
+        command = ["buildx", *command[1 + skip_buildx_options(command[1:]):]]
+    if command and (command[0] not in ALLOWED_COMMANDS or
+                    command[0] == "buildx" and command[1:2] and command[1] not in ALLOWED_BUILDX_COMMANDS):
+        raise Refused(f"docker {' '.join(command[:2])} is not allowed through the bridge")
     # Bake reads its variables from the environment, so a bake job may set others.
     is_bake = command[:1] == ["bake"] or command[:2] == ["buildx", "bake"]
     for name in env:
@@ -166,12 +203,35 @@ def parse_job(data):
     return cwd, env, argv
 
 
+def skip_buildx_options(args):
+    """Returns the index of the buildx subcommand. Like the global options, only
+    known ones are skipped: cobra reads `--` here as a flag taking a value."""
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        if args[i] == "--builder":
+            check_option_value(args, i)
+            i += 2
+        elif args[i] in BUILDX_FLAGS or args[i].startswith(("--builder=", "--debug=")):
+            i += 1
+        else:
+            raise Refused(f"the buildx option {shlex.quote(args[i])} is not allowed")
+    return i
+
+
+def check_option_value(args, i):
+    # cobra reads a following `--` or long flag as a new option rather than a
+    # value, so skipping it would misjudge which command docker runs.
+    if i + 1 < len(args) and args[i + 1].startswith("-"):
+        raise Refused(f"the value of {args[i]} may not start with '-'")
+
+
 def skip_global_options(argv):
     """Returns the index of the subcommand."""
     i = 0
     while i < len(argv) and argv[i].startswith("-"):
         arg = argv[i]
         if arg in GLOBAL_OPTIONS_WITH_VALUE:
+            check_option_value(argv, i)
             i += 2
         elif arg in GLOBAL_FLAGS or arg.startswith("--log-level="):
             i += 1
@@ -194,10 +254,13 @@ def enter_working_directory(cwd, code_dir):
     actual = os.getcwd()
     if actual != code_dir and not actual.startswith(code_dir + os.sep):
         raise Refused(f"the working directory is really {actual}, outside {code_dir}")
+    return actual
 
 
 def displayable(data):
-    return "".join(chr(b) if 0x20 <= b < 0x7f or b in b"\n\t" else f"\\x{b:02x}" for b in data)
+    """Escapes control characters, which could restyle or rewrite the terminal."""
+    return "".join(f"\\x{ord(c):02x}" if (ord(c) < 0x20 and c not in "\n\t") or 0x7f <= ord(c) <= 0x9f else c
+                   for c in data.decode("utf-8", errors="backslashreplace"))
 
 
 class Results:
@@ -275,7 +338,7 @@ def run(job_id, jobs_fd, env, argv):
     # working directory.
     path = os.pathsep.join(entry for entry in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(entry))
     job_env = {name: os.environ[name] for name in HOST_ENV if name in os.environ}
-    job_env.update(env, PATH=path)
+    job_env.update(env, PATH=path, **JOB_DEFAULTS)
     try:
         docker = shutil.which("docker", path=path)
         if docker is None:
@@ -293,7 +356,9 @@ def run(job_id, jobs_fd, env, argv):
             if results.closed:
                 return
             results.write(suffix, chunk)
-            terminal.write(displayable(chunk))
+            # Encoded by hand: a strict non-UTF-8 terminal encoding would
+            # otherwise raise, and a dead relay stops draining docker's pipe.
+            terminal.buffer.write(displayable(chunk).encode(terminal.encoding or "utf-8", "backslashreplace"))
             terminal.flush()
 
     # Daemon threads, joined with a timeout: a docker plugin killed with
@@ -322,7 +387,10 @@ def handle(instance, job_id, jobs_fd, code_dir):
     try:
         data, mtime = read_job(job_id, jobs_fd)
         cwd, env, argv = parse_job(data)
-        enter_working_directory(cwd, code_dir)
+        cwd = enter_working_directory(cwd, code_dir)
+    except Withdrawn:
+        print(f"docker-bridge: job {job_id} was withdrawn", file=sys.stderr)
+        return
     except Refused as refusal:
         finish_without_running(job_id, jobs_fd, f"refused job {job_id} on the host: {refusal}")
         return

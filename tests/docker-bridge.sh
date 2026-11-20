@@ -55,6 +55,8 @@ if [[ -e "$STUB/sleep" ]]; then
   echo \$\$ > "$STUB/started"
   exec sleep 30
 fi
+[[ -e "$STUB/withdraw" ]] && rm "\$(cat "$STUB/withdraw")"
+[[ -e "$STUB/esc" ]] && printf '\033[8mhidden \302\233c \233 \r \342\234\224\n'
 echo stub-out
 echo stub-err >&2
 exit "\$(cat "$STUB/exit" 2>/dev/null || echo 0)"
@@ -137,10 +139,10 @@ expect_refused() {
 # Paths are translated at component boundaries and arguments reach docker intact.
 reset
 bridge 'y\nextra\n' "$PROJECT" run -v "$PROJECT/data:/data" --mount "type=bind,src=$CODE/x,dst=/y" \
-  "$HOST_CODE/already" "${CODE}x/sibling" --label "a b" "it's" "=x" '"q"'
+  "$HOST_CODE/already" "${CODE}x/sibling" "-f$PROJECT/Dockerfile" --label "a b" "it's" "=x" '"q"'
 assert_equals "$client_code" "0"
 assert_equals "$(cat "$STUB/cwd")" "$PROJECT"
-assert_contains "$runner_out" "in   $HOST_CODE/project"
+assert_contains "$runner_out" "in   $PROJECT"
 assert_equals "$(stub_argv)" "run
 -v
 $HOST_CODE/project/data:/data
@@ -148,6 +150,7 @@ $HOST_CODE/project/data:/data
 type=bind,src=$HOST_CODE/x,dst=/y
 $HOST_CODE/already
 ${CODE}x/sibling
+-f$HOST_CODE/project/Dockerfile
 --label
 a b
 it's
@@ -180,6 +183,65 @@ assert_not_contains "$stub_env" "DOCKER_HOST="
 assert_not_contains "$stub_env" "UNRELATED="
 assert_not_contains "$stub_env" "HOST_SECRET="
 assert_not_contains "$stub_env" "work-token"
+grep -qx 'BUILDX_GIT_INFO=0' "$STUB/env" || fail "BUILDX_GIT_INFO=0 was not set: $stub_env"
+
+# Variable values holding paths are translated, or refused when the host can't see them.
+reset
+export COMPOSE_FILE="$PROJECT/compose.yaml"
+start_client "$PROJECT" compose up
+unset COMPOSE_FILE
+wait_for_job
+run_runner 'y\n'
+finish_client
+grep -qx "COMPOSE_FILE=$HOST_CODE/project/compose.yaml" "$STUB/env" || fail "COMPOSE_FILE was not translated: $(cat "$STUB/env")"
+reset
+export COMPOSE_FILE=/tmp/compose.yaml
+start_client "$PROJECT" compose up
+unset COMPOSE_FILE
+finish_client
+assert_equals "$client_code" "125"
+assert_contains "$client_err" "COMPOSE_FILE refers to a path"
+
+# The client and the runner agree on which variables a bake job may pass; the
+# client also skips a global option's value when looking for bake.
+reset
+names=(BUILDX_CONFIG BUILDX_GIT_INFO BUILDX_NO_DEFAULT_ATTESTATIONS BUILDX_BAKE_ENTITLEMENTS_FS GIT_DIR
+  OTEL_EXPORTER_OTLP_ENDPOINT http_proxy HTTPS_PROXY LC_ALL GODEBUG GO_VERSION DOCKER_TLS DOCKER_CONTENT_TRUST
+  SSL_CERT_FILE XDG_CONFIG_HOME TAG DOCKER_BUILDKIT COMPOSE_PROFILES)
+for name in "${names[@]}"; do printf 'variable "%s" {}\n' "$name"; done > "$PROJECT/docker-bake.hcl"
+for name in "${names[@]}"; do export "$name=C"; done
+start_client "$PROJECT" -l debug buildx bake
+unset "${names[@]}"
+wait_for_job
+client_names="$(tr '\0' '\n' < "$job" | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=C$/\1/p' | sort)"
+kill -HUP "$client_pid"
+finish_client
+rm "$PROJECT/docker-bake.hcl"
+runner_names=""
+for name in "${names[@]}"; do
+  reset
+  write_job 20260101-000000-1 v1 "$HOST_CODE/project" "$name=v" -- buildx bake
+  run_runner 'n\n'
+  [[ "$(cat "$JOBS/$job_id.err")" == *"may not set"* ]] || runner_names+="$name"$'\n'
+done
+assert_equals "$client_names" "$(printf '%s' "$runner_names" | sort)"
+[[ "$client_names" == *TAG* ]] || fail "The client did not treat -l debug buildx bake as bake"
+for bake_command in "buildx --builder b bake" "builder -D bake" "bake"; do
+  reset
+  echo 'variable "TAG" {}' > "$PROJECT/docker-bake.hcl"
+  read -ra bake_args <<< "$bake_command"
+  export TAG=v1
+  start_client "$PROJECT" "${bake_args[@]}"
+  unset TAG
+  wait_for_job
+  tr '\0' '\n' < "$job" | grep -qx 'TAG=v1' || fail "The client did not treat $bake_command as bake"
+  kill -HUP "$client_pid"
+  finish_client
+  rm "$PROJECT/docker-bake.hcl"
+  write_job 20260101-000000-1 v1 "$HOST_CODE/project" TAG=v1 -- "${bake_args[@]}"
+  run_runner 'n\n'
+  assert_contains "$(cat "$JOBS/$job_id.err")" "declined"
+done
 
 # The exit code is propagated.
 reset
@@ -257,7 +319,7 @@ printf 'v1\0%s\0--\0ps\0' "$HOST_CODE/project" > "$TMP_DIR/real.job"
 mkdir -p "$JOBS"
 ln -s "$TMP_DIR/real.job" "$JOBS/20260101-000000-7.job"
 job_id=20260101-000000-7
-expect_refused "cannot open the job file safely"
+expect_refused "not a regular file"
 
 # Planted result symlinks are replaced, not written through.
 reset
@@ -349,6 +411,81 @@ wait "$runner_pid" || true
 ! kill -0 "$(cat "$STUB/started")" 2>/dev/null || fail "docker is still running"
 finish_client
 assert_equals "$client_code" "130"
+
+# Only commands that act on the daemon and the job's files are allowed.
+for command in "context use x" "-D context ls" "login -u a -p b" "logout" "trust key generate k" "pass run x" \
+  "extension install x" "buildx create --use" "buildx --builder b use x" "buildx --builder=b use x" "buildx -D use x" \
+  "buildx install" "builder use b" "builder create --use" "builder rm b"; do
+  reset
+  read -ra command_args <<< "$command"
+  write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- "${command_args[@]}"
+  expect_refused "is not allowed through the bridge"
+done
+reset
+write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- buildx -- x use
+expect_refused "buildx option --"
+for command in "buildx --builder -- build use x" "builder --builder --builder build use" "-l -- use"; do
+  reset
+  read -ra command_args <<< "$command"
+  write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- "${command_args[@]}"
+  expect_refused "may not start with '-'"
+done
+for command in "buildx build -t use ." "buildx ls" "buildx bake" "buildx --builder b build ." "builder prune" "--version" \
+  "compose up -d" "run --rm img"; do
+  reset
+  read -ra command_args <<< "$command"
+  write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- "${command_args[@]}"
+  run_runner 'y\n'
+  assert_equals "$(cat "$JOBS/$job_id.exit")" "0"
+done
+
+# The reviewer sees where the job really runs.
+reset
+mkdir -p "$CODE/other"
+ln -s "$CODE/other" "$PROJECT/link"
+write_job 20260101-000000-1 v1 "$HOST_CODE/project/link" -- ps
+run_runner 'n\n'
+assert_contains "$runner_out" "in   $CODE/other"
+rm "$PROJECT/link"
+
+# Special and oversized job files are refused.
+reset
+mkdir -p "$JOBS"
+mkfifo "$JOBS/20260101-000000-1.job"
+job_id=20260101-000000-1
+expect_refused "not a regular file"
+reset
+write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- run "$(head -c 70000 /dev/zero | tr '\0' x)"
+expect_refused "larger than"
+
+# A job ID on the command line handles only that job.
+reset
+write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- ps
+write_job 20260101-000000-2 v1 "$HOST_CODE/project" -- images
+printf 'y\n' | env PATH="$TMP_DIR/bin:$PATH" "$REPO/docker-bridge" work 20260101-000000-2 >/dev/null 2>&1
+assert_equals "$(stub_argv)" "images"
+[[ ! -e "$JOBS/20260101-000000-1.exit" ]] || fail "The other job was handled"
+run_runner ''
+[[ "$runner_code" == 0 ]] || fail "runner failed"
+printf 'y\n' | env PATH="$TMP_DIR/bin:$PATH" "$REPO/docker-bridge" work 20260101-000000-9 >/dev/null 2>"$TMP_DIR/runner.err" && fail "A job that isn't pending was accepted" || true
+assert_contains "$(cat "$TMP_DIR/runner.err")" "no pending job 20260101-000000-9"
+
+# A job withdrawn after the runner listed it is skipped, not refused.
+reset
+write_job 20260101-000000-1 v1 "$HOST_CODE/project" -- ps
+write_job 20260101-000000-2 v1 "$HOST_CODE/project" -- images
+echo "$JOBS/20260101-000000-2.job" > "$STUB/withdraw"
+run_runner 'y\ny\n'
+assert_contains "$runner_err" "job 20260101-000000-2 was withdrawn"
+[[ ! -e "$JOBS/20260101-000000-2.exit" && ! -e "$JOBS/20260101-000000-2.err" ]] || fail "Results were written for a withdrawn job"
+
+# Control characters in docker's output are escaped for the reviewer but reach the container unchanged.
+reset
+touch "$STUB/esc"
+bridge 'y\n' "$PROJECT" ps
+assert_contains "$runner_out" '\x1b[8mhidden \x9bc \x9b \x0d ✔'
+[[ "$runner_out" != *$'\e'* && "$runner_out" != *$'\r'* ]] || fail "A raw control character reached the reviewer's terminal"
+[[ "$client_out" == *$'\e[8mhidden'* ]] || fail "The container did not get docker's raw output"
 
 # A client that hangs up removes its job.
 reset

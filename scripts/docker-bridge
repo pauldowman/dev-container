@@ -32,11 +32,14 @@ translate_piece() {
   fi
 }
 
-# Paths can start an argument or follow =, : or , (as in -v src:dst and
-# --mount type=bind,src=...). Sets $translated.
+# Paths can start an argument, follow a short option (-f/path), or follow =,
+# : or , (as in -v src:dst and --mount type=bind,src=...). Sets $translated.
 translate() {
   local rest=$1 delimiter
   translated=''
+  if [[ $rest =~ ^(-[A-Za-z])(/.*)$ ]]; then
+    translated=${BASH_REMATCH[1]} rest=${BASH_REMATCH[2]}
+  fi
   while :; do
     if [[ $rest =~ ^([^=:,]*)([=:,])(.*)$ ]]; then
       piece=${BASH_REMATCH[1]} delimiter=${BASH_REMATCH[2]} rest=${BASH_REMATCH[3]}
@@ -64,15 +67,27 @@ bake_variable_names() {
 # set these.
 forwardable() {
   case $1 in
-    DOCKER_HOST | DOCKER_CONTEXT | DOCKER_CONFIG | DOCKER_CERT_PATH | DOCKER_TLS* | DOCKER_BRIDGE_*) return 1 ;;
+    DOCKER_HOST | DOCKER_CONTEXT | DOCKER_CONFIG | DOCKER_CERT_PATH | DOCKER_TLS* | DOCKER_BRIDGE_* | DOCKER_CONTENT_TRUST*) return 1 ;;
+    BUILDX_CONFIG | BUILDX_GIT_* | BUILDX_BAKE_ENTITLEMENTS_* | GIT_* | OTEL_* | XDG_*) return 1 ;;
     PATH | HOME | USER | LOGNAME | TMPDIR | LANG | LC_* | PWD | SSH_* | SSL_* | *_PROXY | *_proxy | LD_* | DYLD_*) return 1 ;;
     GO*) if [[ $1 =~ ^GO[A-Z0-9]*$ ]]; then return 1; fi ;;
   esac
 }
 
+# Mirrors the runner's skip_global_options and skip_buildx_options.
 is_bake() {
-  while [[ ${1:-} == -* ]]; do shift; done
-  [[ ${1:-} == bake || (${1:-} == buildx && ${2:-} == bake) ]]
+  while [[ ${1:-} == -* ]]; do
+    case $1 in -l | --log-level) shift ;; esac
+    shift
+  done
+  [[ ${1:-} == bake ]] && return 0
+  [[ ${1:-} == buildx || ${1:-} == builder ]] || return 1
+  shift
+  while [[ ${1:-} == -* ]]; do
+    case $1 in --builder) shift ;; esac
+    shift
+  done
+  [[ ${1:-} == bake ]]
 }
 
 forwarded_env_names() {
@@ -94,6 +109,13 @@ is_within "$cwd" "$container_code" ||
   die "working directory $cwd is not visible on the host (only $container_code is shared)"
 host_cwd=$host_code${cwd#"$container_code"}
 
+# Values such as COMPOSE_FILE can hold paths, too.
+env_entries=()
+for name in $(forwarded_env_names "$@"); do
+  translate "${!name}" || die "$name refers to a path that is not visible on the host"
+  env_entries+=("$name=$translated")
+done
+
 args=()
 for arg in "$@"; do
   translate "$arg" || die "argument '$arg' refers to a path that is not visible on the host"
@@ -107,9 +129,7 @@ trap 'rm -f "$job".*; exit 130' INT TERM HUP
 
 {
   printf '%s\0' v1 "$host_cwd"
-  for name in $(forwarded_env_names "$@"); do
-    printf '%s\0' "$name=${!name}"
-  done
+  if ((${#env_entries[@]})); then printf '%s\0' "${env_entries[@]}"; fi
   printf '%s\0' --
   if ((${#args[@]})); then printf '%s\0' "${args[@]}"; fi
 } >"$job.tmp"
