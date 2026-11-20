@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# Stands in for docker when no Docker socket is mounted. Each call is queued
+# as a job in this instance's data directory, with container paths translated
+# to host paths; a person reviews and runs it on the host with
+# `./docker-bridge <instance>`, and this replays its output and exit code.
+#
+# Job format (NUL-terminated fields): v1, host working directory, NAME=VALUE
+# environment entries, --, then the docker arguments.
+set -euo pipefail
+
+die() {
+  echo "docker-bridge: $*" >&2
+  exit 125
+}
+
+[[ -n ${CODE_DIR:-} ]] || die "CODE_DIR is not set, so the shared code directory is unknown"
+host_code=${CODE_DIR%/}
+container_code=$(readlink -f "$host_code") || die "cannot resolve CODE_DIR ($CODE_DIR)"
+jobs=${DOCKER_BRIDGE_JOBS:-/var/lib/dev-container/data/docker-bridge}
+
+is_within() {
+  [[ $1 == "$2" || $1 == "$2"/* ]]
+}
+
+# Translates one path-like piece; sets $piece.
+translate_piece() {
+  if is_within "$piece" "$container_code"; then
+    piece=$host_code${piece#"$container_code"}
+  fi
+  if [[ $piece =~ ^/(tmp|home)(/|$) ]] && ! is_within "$piece" "$host_code"; then
+    return 1
+  fi
+}
+
+# Paths can start an argument or follow =, : or , (as in -v src:dst and
+# --mount type=bind,src=...). Sets $translated.
+translate() {
+  local rest=$1 delimiter
+  translated=''
+  while :; do
+    if [[ $rest =~ ^([^=:,]*)([=:,])(.*)$ ]]; then
+      piece=${BASH_REMATCH[1]} delimiter=${BASH_REMATCH[2]} rest=${BASH_REMATCH[3]}
+    else
+      piece=$rest delimiter='' rest=''
+    fi
+    translate_piece || return 1
+    translated+=$piece$delimiter
+    [[ -n $delimiter ]] || return 0
+  done
+}
+
+bake_variable_names() {
+  local files=() prev='' arg
+  for arg in "$@"; do
+    case $prev in -f | --file) files+=("$arg") ;; esac
+    case $arg in --file=*) files+=("${arg#--file=}") ;; esac
+    prev=$arg
+  done
+  ((${#files[@]})) || files=(docker-bake.hcl)
+  sed -nE 's/^variable "([A-Za-z_][A-Za-z0-9_]*)".*/\1/p' "${files[@]}" 2>/dev/null || true
+}
+
+# Kept in step with FORBIDDEN_ENV in the host runner, which refuses jobs that
+# set these.
+forwardable() {
+  case $1 in
+    DOCKER_HOST | DOCKER_CONTEXT | DOCKER_CONFIG | DOCKER_CERT_PATH | DOCKER_TLS* | DOCKER_BRIDGE_*) return 1 ;;
+    PATH | HOME | USER | LOGNAME | TMPDIR | LANG | LC_* | PWD | SSH_* | SSL_* | *_PROXY | *_proxy | LD_* | DYLD_*) return 1 ;;
+    GO*) if [[ $1 =~ ^GO[A-Z0-9]*$ ]]; then return 1; fi ;;
+  esac
+}
+
+is_bake() {
+  while [[ ${1:-} == -* ]]; do shift; done
+  [[ ${1:-} == bake || (${1:-} == buildx && ${2:-} == bake) ]]
+}
+
+forwarded_env_names() {
+  local name bake_vars=" "
+  if is_bake "$@"; then
+    bake_vars+="$(bake_variable_names "$@" | tr '\n' ' ')"
+  fi
+  for name in $(compgen -e); do
+    forwardable "$name" || continue
+    case $name in
+      DOCKER_* | BUILDX_* | BUILDKIT_* | COMPOSE_*) echo "$name" ;;
+      *) if [[ $bake_vars == *" $name "* ]]; then echo "$name"; fi ;;
+    esac
+  done
+}
+
+cwd=$(pwd -P)
+is_within "$cwd" "$container_code" ||
+  die "working directory $cwd is not visible on the host (only $container_code is shared)"
+host_cwd=$host_code${cwd#"$container_code"}
+
+args=()
+for arg in "$@"; do
+  translate "$arg" || die "argument '$arg' refers to a path that is not visible on the host"
+  args+=("$translated")
+done
+
+mkdir -p "$jobs"
+id=$(date +%Y%m%d-%H%M%S)-$$
+job=$jobs/$id
+trap 'rm -f "$job".*; exit 130' INT TERM HUP
+
+{
+  printf '%s\0' v1 "$host_cwd"
+  for name in $(forwarded_env_names "$@"); do
+    printf '%s\0' "$name=${!name}"
+  done
+  printf '%s\0' --
+  if ((${#args[@]})); then printf '%s\0' "${args[@]}"; fi
+} >"$job.tmp"
+mv "$job.tmp" "$job.job"
+
+echo "docker-bridge: waiting for approval of job $id; on the host, run ./docker-bridge ${HOSTNAME:-$(hostname)} in the dev-container repository" >&2
+
+until [[ -e $job.exit ]]; do sleep 1; done
+
+cat "$job.out" 2>/dev/null || true
+cat "$job.err" >&2 2>/dev/null || true
+code=$(<"$job.exit")
+rm -f "$job".*
+[[ $code =~ ^[0-9]+$ ]] || die "the host wrote an invalid exit code"
+exit "$code"

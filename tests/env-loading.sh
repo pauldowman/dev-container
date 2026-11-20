@@ -11,7 +11,7 @@ unset BUILD_TARGET DOCKERFILE COMPOSE_FILE DANGEROUSLY_MOUNT_DOCKER_SOCKET INSTA
 
 copy_runtime() {
   mkdir -p "$TMP_DIR/scripts" "$TMP_DIR/bin"
-  cp "$ROOT/build" "$ROOT/start" "$ROOT/dev" "$TMP_DIR/"
+  cp "$ROOT/build" "$ROOT/start" "$ROOT/dev" "$ROOT/docker-bridge" "$TMP_DIR/"
   cp "$ROOT/scripts/env.sh" "$ROOT/scripts/check-repo-mounts" "$TMP_DIR/scripts/"
 }
 
@@ -137,7 +137,7 @@ write_config scratch <<ENV
 CODE_DIR=$CODE_ROOT
 ENV
 
-for script in build start dev; do
+for script in build start dev docker-bridge; do
   expect_failure "Usage: $script <instance>" "$TMP_DIR/$script"
   expect_failure "create $TMP_DIR/config/missing/.env" "$TMP_DIR/$script" missing project
 done
@@ -188,7 +188,7 @@ write_config composefile <<ENV
 CODE_DIR=$CODE_ROOT
 COMPOSE_FILE=docker-compose.yml
 ENV
-for script in build start dev; do
+for script in build start dev docker-bridge; do
   expect_failure "COMPOSE_FILE is not supported" "$TMP_DIR/$script" composefile project
 done
 
@@ -267,7 +267,7 @@ CODE_DIR=$CODE_ROOT
 ENV
 "$TMP_DIR/build" "$valid_long_instance" >/dev/null
 "$TMP_DIR/start" "$valid_long_instance" >/dev/null
-for script in build start dev; do
+for script in build start dev docker-bridge; do
   expect_failure "instance must be at most 123 characters" "$TMP_DIR/$script" "$invalid_long_instance" project
 done
 expect_failure "instance must be at least two characters" "$TMP_DIR/start" Bad

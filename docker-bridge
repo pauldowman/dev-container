@@ -1,0 +1,368 @@
+#!/usr/bin/env python3
+"""Runs the docker jobs an instance queued through scripts/docker-bridge.
+
+Everything in the jobs directory was written by the container, so each job is
+read once through a descriptor, shown with all its parts quoted, and run only
+after approval: with no shell, stdin from /dev/null and only the host's own
+basic environment plus the job's DOCKER_*-style variables. Results are written
+through files this runner creates exclusively, then renamed into place, so a
+symlink planted by the container is replaced rather than followed.
+"""
+
+import fcntl
+import os
+import re
+import secrets
+import shlex
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import threading
+import time
+
+REPO = os.path.dirname(os.path.realpath(__file__))
+JOB_ID = re.compile(r"[0-9]{8}-[0-9]{6}-[0-9]+")
+MAX_JOB_BYTES = 64 * 1024
+PRINTABLE = re.compile(rb"[\x20-\x7e]*")
+RUNNER_TEMP = re.compile(r"\.[0-9]{8}-[0-9]{6}-[0-9]+\.(out|err|exit)\.[0-9a-f]{16}\.tmp")
+ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+DOCKER_ENV = re.compile(r"(DOCKER|BUILDX|BUILDKIT|COMPOSE)_.*")
+# Kept in step with forwardable() in scripts/docker-bridge: these would pick
+# another daemon, configuration, loader, proxy, certificate or SSH agent, or
+# replace the host's own basic environment.
+FORBIDDEN_ENV = re.compile(r"DOCKER_(HOST|CONTEXT|CONFIG|CERT_PATH|TLS.*|BRIDGE_.*)|PATH|HOME|USER|LOGNAME|"
+                           r"TMPDIR|LANG|LC_.*|PWD|SSH_.*|SSL_.*|.*_(PROXY|proxy)|GO[A-Z0-9]*|LD_.*|DYLD_.*")
+# Only these may come before the subcommand; anything else (-H, --context,
+# --config, combined short flags like -DH) could pick another daemon or load
+# files the container wrote.
+GLOBAL_FLAGS = {"-D", "--debug", "-v", "--version", "-h", "--help"}
+GLOBAL_OPTIONS_WITH_VALUE = {"-l", "--log-level"}
+HOST_ENV = ("HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "DOCKER_HOST", "DOCKER_CONTEXT",
+            "DOCKER_CONFIG", "DOCKER_CERT_PATH", "DOCKER_TLS_VERIFY")
+RESULT_SUFFIXES = (".out", ".err", ".exit")
+STOP_TIMEOUT_SECONDS = 10
+
+
+class Refused(Exception):
+    pass
+
+
+def usage(code):
+    print("Usage: docker-bridge <instance> [<job-id>]", file=sys.stderr)
+    sys.exit(code)
+
+
+def fail(message):
+    print(f"Error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def code_dir_of(instance):
+    # Asks dev in a subprocess so the instance .env, which holds GH_TOKEN, is
+    # never loaded into this process or the jobs it runs. dev also validates
+    # the instance name, which is used as a path component below.
+    result = subprocess.run([os.path.join(REPO, "dev"), instance, "--code-dir"],
+                            stdout=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+    # getcwd gives the case on disk, which is what jobs' working directories
+    # are compared with.
+    try:
+        os.chdir(result.stdout.rstrip("\n"))
+    except OSError as error:
+        fail(f"cannot enter CODE_DIR ({error.strerror})")
+    code_dir = os.getcwd()
+    os.chdir(REPO)
+    return code_dir
+
+
+def open_jobs_dir(instance):
+    data_dir = os.path.join(REPO, "data", instance)
+    if os.path.islink(data_dir):
+        fail(f"{data_dir} is a symlink")
+    path = os.path.join(data_dir, "docker-bridge")
+    if not os.path.lexists(path):
+        return None
+    try:
+        jobs_fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        fail(f"{path} is not a real directory")
+    try:
+        fcntl.flock(jobs_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fail(f"another docker-bridge is already handling jobs for {instance}")
+    return jobs_fd
+
+
+def lexists(name, jobs_fd):
+    try:
+        os.stat(name, dir_fd=jobs_fd, follow_symlinks=False)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def remove_leftovers(jobs_fd):
+    """Removes results whose client gave up, and temp files of an interrupted runner."""
+    names = set(os.listdir(jobs_fd))
+    for name in names:
+        job_id, suffix = os.path.splitext(name)
+        orphaned = suffix in RESULT_SUFFIXES and JOB_ID.fullmatch(job_id) and f"{job_id}.job" not in names
+        if orphaned or RUNNER_TEMP.fullmatch(name):
+            try:
+                os.unlink(name, dir_fd=jobs_fd)
+            except OSError as error:
+                print(f"docker-bridge: could not remove {name}: {error.strerror}", file=sys.stderr)
+
+
+def pending_jobs(jobs_fd):
+    ids = sorted(name[:-4] for name in os.listdir(jobs_fd)
+                 if name.endswith(".job") and JOB_ID.fullmatch(name[:-4]))
+    return [job_id for job_id in ids if not lexists(f"{job_id}.exit", jobs_fd)]
+
+
+def read_job(job_id, jobs_fd):
+    try:
+        fd = os.open(f"{job_id}.job", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=jobs_fd)
+    except OSError as error:
+        raise Refused(f"cannot open the job file safely ({error.strerror})")
+    with os.fdopen(fd, "rb") as file:
+        info = os.fstat(file.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise Refused("the job is not a regular file")
+        data = file.read(MAX_JOB_BYTES + 1)
+    if len(data) > MAX_JOB_BYTES:
+        raise Refused(f"the job is larger than {MAX_JOB_BYTES} bytes")
+    return data, info.st_mtime
+
+
+def parse_job(data):
+    fields = data.split(b"\0")
+    if fields.pop() != b"" or not fields or fields[0] != b"v1" or b"--" not in fields:
+        raise Refused("the job is not in the v1 format")
+    if not all(PRINTABLE.fullmatch(field) for field in fields):
+        raise Refused("the job contains characters other than printable ASCII")
+    fields = [field.decode("ascii") for field in fields]
+    separator = fields.index("--")
+    if separator < 2:
+        raise Refused("the job has no working directory")
+    cwd, env_entries, argv = fields[1], fields[2:separator], fields[separator + 1:]
+
+    env = {}
+    for entry in env_entries:
+        name, equals, value = entry.partition("=")
+        if not equals or not ENV_NAME.fullmatch(name):
+            raise Refused(f"invalid environment entry {shlex.quote(entry)}")
+        env[name] = value
+
+    command = argv[skip_global_options(argv):]
+    # Bake reads its variables from the environment, so a bake job may set others.
+    is_bake = command[:1] == ["bake"] or command[:2] == ["buildx", "bake"]
+    for name in env:
+        if FORBIDDEN_ENV.fullmatch(name) or not (DOCKER_ENV.fullmatch(name) or is_bake):
+            raise Refused(f"the job may not set {name}")
+    return cwd, env, argv
+
+
+def skip_global_options(argv):
+    """Returns the index of the subcommand."""
+    i = 0
+    while i < len(argv) and argv[i].startswith("-"):
+        arg = argv[i]
+        if arg in GLOBAL_OPTIONS_WITH_VALUE:
+            i += 2
+        elif arg in GLOBAL_FLAGS or arg.startswith("--log-level="):
+            i += 1
+        else:
+            raise Refused(f"the global option {shlex.quote(arg)} is not allowed")
+    return i
+
+
+def enter_working_directory(cwd, code_dir):
+    # getcwd reports where the directory really is, so a symlink the container
+    # placed inside CODE_DIR cannot lead the job to another host directory.
+    # Staying in it, rather than reopening the path, keeps a later swap of the
+    # path from mattering.
+    if not os.path.isabs(cwd):
+        raise Refused("the working directory is not absolute")
+    try:
+        os.chdir(cwd)
+    except OSError as error:
+        raise Refused(f"cannot enter the working directory ({error.strerror})")
+    actual = os.getcwd()
+    if actual != code_dir and not actual.startswith(code_dir + os.sep):
+        raise Refused(f"the working directory is really {actual}, outside {code_dir}")
+
+
+def displayable(data):
+    return "".join(chr(b) if 0x20 <= b < 0x7f or b in b"\n\t" else f"\\x{b:02x}" for b in data)
+
+
+class Results:
+    """Output files created exclusively in the jobs directory, renamed into place."""
+
+    def __init__(self, job_id, jobs_fd):
+        self.job_id, self.jobs_fd, self.files = job_id, jobs_fd, {}
+        self.lock, self.closed = threading.Lock(), False
+        for suffix in RESULT_SUFFIXES:
+            name = f".{job_id}{suffix}.{secrets.token_hex(8)}.tmp"
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644, dir_fd=jobs_fd)
+            self.files[suffix] = (name, os.fdopen(fd, "wb"))
+
+    def write(self, suffix, data):
+        with self.lock:
+            if not self.closed:
+                self.files[suffix][1].write(data)
+                self.files[suffix][1].flush()
+
+    def publish(self, exit_code):
+        self.write(".exit", f"{exit_code}\n".encode())
+        with self.lock:
+            self.closed = True
+        for suffix in RESULT_SUFFIXES:
+            name, file = self.files[suffix]
+            file.close()
+            try:
+                os.replace(name, f"{self.job_id}{suffix}", src_dir_fd=self.jobs_fd, dst_dir_fd=self.jobs_fd)
+            except OSError as error:
+                print(f"docker-bridge: could not publish {self.job_id}{suffix}: {error.strerror}", file=sys.stderr)
+
+
+def finish_without_running(job_id, jobs_fd, message, exit_code=125, results=None):
+    print(f"docker-bridge: {message}", file=sys.stderr)
+    results = results or Results(job_id, jobs_fd)
+    results.write(".err", f"docker-bridge: {message}\n".encode())
+    results.publish(exit_code)
+
+
+def show(instance, job_id, age, cwd, env, argv):
+    print(f"\nJob {job_id} from {instance}, queued {int(age)}s ago")
+    print(f"  in   {shlex.quote(cwd)}")
+    for name, value in env.items():
+        print(f"  env  {shlex.quote(f'{name}={value}')}")
+    print(f"  run  {shlex.join(['docker', *argv])}")
+
+
+def confirm():
+    print("Run? [y/N] ", end="", flush=True)
+    answer = sys.stdin.readline()
+    if not answer:
+        print()
+    return answer.strip().lower() in ("y", "yes")
+
+
+def stop(process):
+    # docker runs in its own process group so that plugins it started (compose)
+    # stop with it. docker run forwards SIGTERM to the container, which may
+    # ignore it.
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=STOP_TIMEOUT_SECONDS)
+    except (KeyboardInterrupt, subprocess.TimeoutExpired):
+        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+
+def run(job_id, jobs_fd, env, argv):
+    results = Results(job_id, jobs_fd)
+    # Relative PATH entries would find a docker the container placed in the
+    # working directory.
+    path = os.pathsep.join(entry for entry in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(entry))
+    job_env = {name: os.environ[name] for name in HOST_ENV if name in os.environ}
+    job_env.update(env, PATH=path)
+    try:
+        docker = shutil.which("docker", path=path)
+        if docker is None:
+            raise FileNotFoundError(0, "docker is not on the host PATH")
+        process = subprocess.Popen([docker, *argv], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, env=job_env, start_new_session=True)
+    except OSError as error:
+        finish_without_running(job_id, jobs_fd, f"cannot run docker: {error.strerror}", 127, results)
+        return
+
+    # Stops showing output once the job is published, so leftover output
+    # cannot appear inside the next job's prompt.
+    def relay(stream, suffix, terminal):
+        for chunk in iter(lambda: stream.read1(65536), b""):
+            if results.closed:
+                return
+            results.write(suffix, chunk)
+            terminal.write(displayable(chunk))
+            terminal.flush()
+
+    # Daemon threads, joined with a timeout: a docker plugin killed with
+    # docker can leave a child holding the pipes open.
+    relays = [threading.Thread(target=relay, args=(process.stdout, ".out", sys.stdout), daemon=True),
+              threading.Thread(target=relay, args=(process.stderr, ".err", sys.stderr), daemon=True)]
+    for thread in relays:
+        thread.start()
+    try:
+        code = process.wait()
+    except KeyboardInterrupt:
+        stop(process)
+        code = 130
+    try:
+        for thread in relays:
+            thread.join(timeout=STOP_TIMEOUT_SECONDS)
+    except KeyboardInterrupt:
+        code = 130
+    if code < 0:
+        code = 128 - code
+    results.publish(code)
+    print(f"docker-bridge: job {job_id} exited with {code}", file=sys.stderr)
+
+
+def handle(instance, job_id, jobs_fd, code_dir):
+    try:
+        data, mtime = read_job(job_id, jobs_fd)
+        cwd, env, argv = parse_job(data)
+        enter_working_directory(cwd, code_dir)
+    except Refused as refusal:
+        finish_without_running(job_id, jobs_fd, f"refused job {job_id} on the host: {refusal}")
+        return
+    show(instance, job_id, time.time() - mtime, cwd, env, argv)
+    if confirm():
+        run(job_id, jobs_fd, env, argv)
+    else:
+        finish_without_running(job_id, jobs_fd, f"job {job_id} was declined on the host")
+
+
+def main(args):
+    if not args or args[0] in ("-h", "--help"):
+        usage(0 if args else 1)
+    if args[0].startswith("-") or len(args) > 2:
+        usage(1)
+    instance = args[0]
+    code_dir = code_dir_of(instance)
+    jobs_fd = open_jobs_dir(instance)
+    if jobs_fd is None:
+        print(f"No pending docker jobs for {instance}.")
+        return
+
+    remove_leftovers(jobs_fd)
+    pending = pending_jobs(jobs_fd)
+    if len(args) == 2:
+        if args[1] not in pending:
+            fail(f"no pending job {args[1]} for {instance}")
+        pending = [args[1]]
+    if not pending:
+        print(f"No pending docker jobs for {instance}.")
+    for job_id in pending:
+        try:
+            handle(instance, job_id, jobs_fd, code_dir)
+        finally:
+            os.chdir(REPO)
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+        sys.exit(130)
