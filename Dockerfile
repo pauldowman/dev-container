@@ -247,7 +247,7 @@ CMD ["/usr/local/bin/start-gui.sh"]
 
 FROM development AS base-target-test
 RUN ! command -v xrdp >/dev/null
-RUN sudo mkdir -p /run/sshd && sudo /usr/sbin/sshd -T | grep -qx 'allowagentforwarding no'
+RUN sudo mkdir -p /run/sshd && sudo /usr/sbin/sshd -T | grep -qix 'allowagentforwarding no'
 
 FROM gui AS gui-target-test
 RUN command -v xrdp >/dev/null
